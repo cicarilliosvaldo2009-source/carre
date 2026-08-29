@@ -3097,7 +3097,7 @@ export default function App() {
         .calendario-embed-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
         .calendario-embed-wrap { flex: 1; min-height: 480px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
         .aviso-preview { flex-shrink: 0; background: #FBE9CE; border: 1px solid #E0BE85; border-radius: 10px; padding: 10px 14px; font-size: 12.5px; line-height: 1.5; color: var(--ink); }
-        .calendario-embed { width: 100%; height: 100%; min-height: 560px; border: none; display: block; }
+        .calendario-embed { width: 100%; height: calc(100% + 54px); min-height: 614px; margin-bottom: -54px; border: none; display: block; }
         .calendario-vacio { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; max-width: 420px; color: var(--ink-soft); }
         .calendario-vacio h2 { color: var(--ink); }
         .ayuda-calendario { background: var(--paper-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 14px 16px; margin-top: 4px; }
