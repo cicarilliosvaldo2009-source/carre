@@ -3377,6 +3377,7 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
       vincularExamen: false,
       examenMateriaId: materias?.[0]?.id || "",
       examenTipo: "Parcial",
+      colorId: "",
     }
   );
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -3423,6 +3424,15 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
           <span>Descripción (opcional)</span>
           <textarea rows={3} value={form.descripcion} onChange={(e) => set("descripcion", e.target.value)} placeholder="Detalle del evento" />
         </label>
+        <div className="campo campo-full">
+          <span>Color del evento</span>
+          <div className="evento-color-selector" role="radiogroup" aria-label="Color del evento">
+            <button type="button" role="radio" aria-checked={!form.colorId} className={`evento-color-default ${!form.colorId ? "evento-color-activo" : ""}`} onClick={() => set("colorId", "")}>Predeterminado</button>
+            {Object.entries(GOOGLE_EVENTO_COLORES).map(([id, color]) => (
+              <button type="button" key={id} role="radio" aria-checked={form.colorId === id} className={`evento-color-opcion ${form.colorId === id ? "evento-color-activo" : ""}`} style={{ background: color }} title={`Color ${id}`} aria-label={`Elegir color ${id}`} onClick={() => set("colorId", id)} />
+            ))}
+          </div>
+        </div>
 
         {esNuevo && (
           <>
@@ -3673,6 +3683,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
       start: { dateTime: `${form.fecha}T${form.horaInicio}:00`, timeZone: "America/Argentina/Mendoza" },
       end: { dateTime: `${form.fecha}T${form.horaFin}:00`, timeZone: "America/Argentina/Mendoza" },
     };
+    if (form.colorId) payload.colorId = form.colorId;
     if (form.repetir && form.diasRepeticion && form.diasRepeticion.length > 0) {
       const DIA_RRULE = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]; // índice = Date.getDay()
       const byday = form.diasRepeticion.map((d) => DIA_RRULE[d]).join(",");
@@ -3753,6 +3764,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
       fecha: inicio ? toDateStr(inicio) : toDateStr(new Date()),
       horaInicio: hhmm(inicio),
       horaFin: hhmm(fin),
+      colorId: ev.colorId || "",
     };
   };
 
@@ -5039,6 +5051,11 @@ export default function App() {
         .dia-repeticion-chip { width: 40px; height: 34px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--input-bg); color: var(--ink); font-family: inherit; font-size: 11.5px; font-weight: 700; text-transform: uppercase; cursor: pointer; transition: all 0.15s; }
         .dia-repeticion-chip:hover { border-color: var(--forest); }
         .dia-repeticion-chip-activo { background: var(--forest); border-color: var(--forest); color: #F6F3E7; }
+        .evento-color-selector { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .evento-color-default { border: 1px solid var(--line); border-radius: 18px; padding: 5px 10px; background: var(--input-bg); color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
+        .evento-color-opcion { width: 24px; height: 24px; border: 2px solid transparent; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); }
+        .evento-color-selector .evento-color-activo { outline: 2px solid var(--ink); outline-offset: 2px; }
+        .evento-color-default.evento-color-activo { background: var(--paper-2); color: var(--ink); font-weight: 700; }
 
         .resumenes-layout { display: grid; grid-template-columns: 150px 1fr; gap: 16px; }
         .resumenes-lista { display: flex; flex-direction: column; gap: 4px; }
@@ -5063,7 +5080,7 @@ export default function App() {
         .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; }
         .mapa-col-titulo { position: absolute; top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
         .mapa-nodo { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s; font-family: inherit; }
-        .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 22%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
+        .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 11%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
         .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
         .mapa-nodo-bloqueada .mapa-nodo-estado, .mapa-nodo-bloqueada .mapa-nodo-lock { color: var(--brick); }
         .mapa-nodo:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 5; }
