@@ -444,7 +444,7 @@ function seedData() {
   const hoy = new Date();
   const plus = (d) => toDateStr(new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + d));
 
-  // Plan de estudios de referencia: Contador Público, 4 años.
+  // Datos ficticios de demostración para recorrer todas las secciones de la app.
   const definiciones = [
     // ---- 1er año (todas aprobadas) ----
     { nombre: "Contabilidad I", profesor: "Cra. Herrera", aula: "Aula 101", anio: 1, color: "#B5432E", estado: "Aprobada", fechaAprobada: plus(-650), correlativas: "",
@@ -466,8 +466,10 @@ function seedData() {
       examenes: [{ tipo: "Final", titulo: "Final", nota: 8 }] },
     { nombre: "Estadística I", profesor: "Lic. Bianchi", aula: "Aula 204", anio: 2, color: "#2C5C8A", estado: "Regular", correlativas: "Matemática I",
       horarios: [{ dia: "Lunes", inicio: "18:00", fin: "20:00" }], asistencia: { faltas: 0, inicioCursada: plus(-45), finCursada: plus(75) },
-      examenes: [{ tipo: "Parcial", titulo: "Primer parcial", nota: 6 }, { tipo: "Parcial", titulo: "Segundo parcial", nota: 7 }],
-      tareas: [{ titulo: "Inscribirse a mesa de final", fecha: plus(10) }] },
+      examenes: [{ tipo: "Parcial", titulo: "Primer parcial", nota: 6, fecha: plus(-22) }, { tipo: "Parcial", titulo: "Segundo parcial", nota: 7, fecha: plus(-5) }, { tipo: "Final", titulo: "Final", nota: null, fecha: plus(12) }],
+      tareas: [{ titulo: "Inscribirse a mesa de final", descripcion: "Revisar la fecha y el aula antes de confirmar.", fecha: plus(10) }],
+      notas: [{ fecha: new Date().toISOString(), texto: "Repasar distribución normal y ejercicios de intervalos de confianza." }],
+      recursos: [{ tipo: "PDF", nombre: "Guía de ejercicios — unidad 4", url: "https://example.com/guia-estadistica.pdf" }] },
     { nombre: "Derecho Comercial", profesor: "Dr. Ibáñez", aula: "Aula 110", anio: 2, color: "#6E4C8A", estado: "Aprobada", fechaAprobada: plus(-280), correlativas: "Elementos de Derecho Civil",
       examenes: [{ tipo: "Final", titulo: "Final", nota: 7 }] },
     { nombre: "Microeconomía", profesor: "Lic. Paz", aula: "Aula 105", anio: 2, color: "#C4842E", estado: "Aprobada", fechaAprobada: plus(-270), correlativas: "Introducción a la Economía",
@@ -477,22 +479,31 @@ function seedData() {
     { nombre: "Contabilidad de Costos", profesor: "Cra. Molina", aula: "Aula 201", anio: 3, color: "#B5432E", estado: "Cursando", correlativas: "Contabilidad II",
       horarios: [{ dia: "Lunes", inicio: "08:00", fin: "10:00" }, { dia: "Miércoles", inicio: "08:00", fin: "10:00" }],
       asistencia: { faltas: 1, inicioCursada: plus(-45), finCursada: plus(75) },
-      examenes: [{ tipo: "Trabajo práctico", titulo: "TP1 — Costeo ABC", nota: 8 }],
-      tareas: [{ titulo: "Resolver guía de costos ABC", fecha: plus(2) }],
-      resumenes: [{ titulo: "Costeo ABC", bloques: [{ tipo: "texto", titulo: "Idea central", texto: "El costeo basado en actividades asigna los costos indirectos según las actividades que efectivamente consumen los productos, en vez de prorratearlos con una única base." }] }] },
+      examenes: [{ tipo: "Trabajo práctico", titulo: "TP1 — Costeo ABC", nota: 8, fecha: plus(-8) }, { tipo: "Parcial", titulo: "Primer parcial", nota: null, fecha: plus(6) }],
+      tareas: [
+        { titulo: "Resolver guía de costos ABC", descripcion: "Llevar los ejercicios 3, 5 y 7 resueltos.", fecha: plus(2), subtareas: [{ id: uid(), texto: "Leer el caso de la fábrica", completada: true }, { id: uid(), texto: "Calcular inductores", completada: false }, { id: uid(), texto: "Revisar resultados", completada: false }] },
+        { titulo: "Repaso semanal de fórmulas", descripcion: "15 minutos de práctica.", fecha: plus(1), recurrencia: { diaSemana: 3 }, vecesCompletada: 2 },
+        { titulo: "Subir el primer avance", fecha: plus(-3), completada: true },
+      ],
+      notas: [{ fecha: new Date(Date.now() - 86400000).toISOString(), texto: "La diferencia clave entre costeo tradicional y ABC está en la asignación de indirectos." }, { fecha: new Date().toISOString(), texto: "Preguntar en clase por el tratamiento de capacidad ociosa." }],
+      recursos: [{ tipo: "Libro", nombre: "Costos para la gestión — capítulo 3", url: "https://example.com/costos-capitulo-3" }, { tipo: "Link", nombre: "Calculadora de punto de equilibrio", url: "https://example.com/punto-equilibrio" }],
+      resumenes: [{ titulo: "Costeo ABC", bloques: [{ tipo: "texto", titulo: "Idea central", texto: "El costeo basado en actividades asigna los costos indirectos según las actividades que efectivamente consumen los productos, en vez de prorratearlos con una única base." }, { tipo: "texto", titulo: "Para recordar", texto: "Actividad → inductor → costo asignado." }] }] },
     { nombre: "Contabilidad Superior", profesor: "Cra. Herrera", aula: "Aula 101", anio: 3, color: "#B5432E", estado: "Cursando", correlativas: "Contabilidad II",
       horarios: [{ dia: "Martes", inicio: "14:00", fin: "17:00" }],
       asistencia: { faltas: 5, inicioCursada: plus(-45), finCursada: plus(75) },
-      examenes: [{ tipo: "Parcial", titulo: "Primer parcial", nota: 6 }],
-      tareas: [{ titulo: "Preparar exposición de EECC consolidados", fecha: plus(5) }] },
+      examenes: [{ tipo: "Parcial", titulo: "Primer parcial", nota: 6, fecha: plus(-10) }, { tipo: "Recuperatorio", titulo: "Recuperatorio primer parcial", nota: null, fecha: plus(9) }],
+      tareas: [{ titulo: "Preparar exposición de EECC consolidados", descripcion: "Armar una diapositiva por ajuste de consolidación.", fecha: plus(5) }, { titulo: "Enviar consulta al equipo", fecha: plus(-1), completada: true }],
+      notas: [{ fecha: new Date().toISOString(), texto: "Confirmar con el grupo quién explica eliminaciones intercompañía." }],
+      recursos: [{ tipo: "Apunte", nombre: "Resumen de consolidación", url: "https://example.com/resumen-consolidacion" }] },
     { nombre: "Derecho Tributario I", profesor: "Dr. Ibáñez", aula: "Aula 110", anio: 3, color: "#6E4C8A", estado: "Regular", correlativas: "Derecho Comercial",
       horarios: [{ dia: "Jueves", inicio: "18:00", fin: "21:00" }], asistencia: { faltas: 0, inicioCursada: plus(-45), finCursada: plus(75) },
       examenes: [{ tipo: "Parcial", titulo: "Primer parcial", nota: 7 }, { tipo: "Parcial", titulo: "Segundo parcial", nota: 6 }] },
     { nombre: "Finanzas de las Organizaciones", profesor: "Lic. Roldán", aula: "Aula 203", anio: 3, color: "#2C5C8A", estado: "Cursando", correlativas: "Matemática Financiera, Estadística I",
       horarios: [{ dia: "Viernes", inicio: "10:00", fin: "13:00" }],
       asistencia: { faltas: 7, inicioCursada: plus(-45), finCursada: plus(75) },
-      examenes: [{ tipo: "Trabajo práctico", titulo: "TP1 — VAN y TIR", nota: null }],
-      tareas: [{ titulo: "Entregar TP de VAN y TIR", fecha: plus(-1) }] },
+      examenes: [{ tipo: "Trabajo práctico", titulo: "TP1 — VAN y TIR", nota: null, fecha: plus(-1) }, { tipo: "Otro", titulo: "Presentación de cartera", nota: null, fecha: plus(15) }],
+      tareas: [{ titulo: "Entregar TP de VAN y TIR", descripcion: "Subir planilla y breve informe al aula virtual.", fecha: plus(-1) }],
+      notas: [{ fecha: new Date().toISOString(), texto: "El VAN compara flujos descontados contra la inversión inicial." }] },
     { nombre: "Derecho Laboral y de la Seguridad Social", profesor: "Dr. Ibáñez", aula: "Aula 110", anio: 3, color: "#6E4C8A", estado: "Cursando", correlativas: "Derecho Comercial",
       horarios: [{ dia: "Miércoles", inicio: "18:00", fin: "20:00" }],
       asistencia: { faltas: 0, inicioCursada: plus(-45), finCursada: plus(75) },
@@ -5137,8 +5148,8 @@ export default function App() {
       {confirmarReset && (
         <Modal title="Restablecer datos de ejemplo" onClose={() => setConfirmarReset(false)}>
           <p style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Esto borra todas tus materias actuales y las reemplaza por el set de datos de ejemplo
-            (Contador Público, 4 años). No se puede deshacer.
+            Esto borra todas tus materias actuales y las reemplaza por datos ficticios de demostración,
+            pensados para probar las funciones de la app. No se puede deshacer.
           </p>
           <div className="modal-acciones">
             <button className="btn-secundario" onClick={() => setConfirmarReset(false)}>Cancelar</button>
