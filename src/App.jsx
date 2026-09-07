@@ -5151,7 +5151,9 @@ export default function App() {
         /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
            En estos últimos, el cursor puede ser "fino" pero el scroll de un
            panel interno no siempre recibe los gestos del trackpad. */
-        @media (max-width: 1100px), (pointer: coarse) {
+        /* El layout de teléfono depende únicamente del ancho reducido. Una
+           tablet táctil no debe caer acá solo por usar una pantalla coarse. */
+        @media (max-width: 699px) {
           /* En pantallas táctiles el scroll pertenece al documento, no a un contenedor
              interno. Así un gesto que empieza sobre una tarjeta, lista o
              campo continúa desplazando toda la pantalla de forma fiable con
@@ -5215,6 +5217,22 @@ export default function App() {
         .app-shell-tablet .modal-wide { width: 620px; }
         .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
         .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; }
+
+        /* Respaldo para tablets que el navegador identifica solo por su
+           puntero táctil. No cambia el contenido a versión móvil: mantiene
+           el layout de PC y comprime exclusivamente la barra izquierda. */
+        @media (min-width: 700px) and (pointer: coarse) {
+          .app-shell { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
+          .sidebar { position: sticky; top: 0; align-self: flex-start; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
+          .main-area { display: block; flex: 1 1 auto; min-height: auto; }
+          .view, .calendario-persistente, .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
+          .sidebar-brand, .sidebar-carne, .sidebar-reset { display: none; }
+          .sidebar-nav { flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
+          .sidebar-item { width: 44px; justify-content: center; padding: 11px; }
+          .sidebar-item span { display: none; }
+          .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
+          .sidebar-tema svg { width: 16px; height: 16px; }
+        }
       `}</style>
 
       <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} />
