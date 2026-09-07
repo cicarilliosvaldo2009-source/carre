@@ -5216,7 +5216,11 @@ export default function App() {
         .app-shell-tablet .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
         .app-shell-tablet .modal-wide { width: 620px; }
         .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
-        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; }
+        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+        /* Las siete secciones caben sin desplazamiento horizontal: cuatro
+           pestañas por fila en lugar de una única fila demasiado larga. */
+        .app-shell-tablet .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
+        .app-shell-tablet .tab { min-width: 0; padding: 9px 5px; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
 
         /* Respaldo para tablets que el navegador identifica solo por su
            puntero táctil. No cambia el contenido a versión móvil: mantiene
@@ -5232,6 +5236,9 @@ export default function App() {
           .sidebar-item span { display: none; }
           .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
           .sidebar-tema svg { width: 16px; height: 16px; }
+          .detalle-panel { overflow-x: hidden; }
+          .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
+          .tab { min-width: 0; padding: 9px 5px; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
         }
       `}</style>
 
