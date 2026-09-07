@@ -4116,31 +4116,48 @@ function FocusView({ materias, sesiones, agregarSesion }) {
     agregarSesion({ id: uid(), materiaId, fecha: new Date().toISOString(), minutos: Math.round(minutos) });
   };
 
-  // Beep chico (dos tonos) al terminar una fase, generado con Web Audio —
-  // así no depende de ningún archivo de audio externo.
+  // Señal de fin generada con Web Audio, sin depender de archivos externos.
+  // El contexto se habilita al iniciar/reanudar (gesto del usuario), para que
+  // el navegador permita reproducir la alarma aunque termine más tarde.
   const audioCtxRef = useRef(null);
-  const reproducirBeepFin = () => {
+  const prepararAudio = () => {
     try {
       if (!audioCtxRef.current) {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         audioCtxRef.current = new Ctx();
       }
+      if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
+    } catch (e) {
+      // El navegador no ofrece Web Audio; el timer sigue funcionando igual.
+    }
+  };
+  const reproducirBeepFin = () => {
+    try {
+      prepararAudio();
       const ctx = audioCtxRef.current;
-      const sonar = (frecuencia, inicio) => {
+      if (!ctx || ctx.state !== "running") return;
+      const master = ctx.createGain();
+      master.gain.value = 0.62;
+      master.connect(ctx.destination);
+      const sonar = (frecuencia, inicio, duracion) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = "sine";
+        osc.type = "triangle";
         osc.frequency.value = frecuencia;
         gain.gain.setValueAtTime(0.0001, ctx.currentTime + inicio);
-        gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + inicio + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + inicio + 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.58, ctx.currentTime + inicio + 0.025);
+        gain.gain.setValueAtTime(0.42, ctx.currentTime + inicio + duracion * 0.58);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + inicio + duracion);
         osc.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(master);
         osc.start(ctx.currentTime + inicio);
-        osc.stop(ctx.currentTime + inicio + 0.4);
+        osc.stop(ctx.currentTime + inicio + duracion + 0.03);
       };
-      sonar(880, 0);
-      sonar(1046.5, 0.25);
+      // Acorde ascendente de aproximadamente 1,5 s: más fácil de percibir
+      // que el beep anterior incluso mientras se estudia con la pestaña abierta.
+      sonar(659.25, 0, 0.38);
+      sonar(783.99, 0.42, 0.38);
+      sonar(1046.5, 0.84, 0.62);
     } catch (e) {
       // El navegador bloqueó el audio (o no está disponible) — no pasa nada.
     }
@@ -4180,6 +4197,7 @@ function FocusView({ materias, sesiones, agregarSesion }) {
 
   const iniciar = () => {
     if (!materiaId) return;
+    prepararAudio();
     setFase("estudio");
     setSegundosRestantes(duracionMin * 60);
     setFinTimestamp(Date.now() + duracionMin * 60000);
@@ -4191,6 +4209,7 @@ function FocusView({ materias, sesiones, agregarSesion }) {
   };
   const reanudar = () => {
     if (fase === "inactivo") return;
+    prepararAudio();
     setFinTimestamp(Date.now() + segundosRestantes * 1000);
     setCorriendo(true);
   };
@@ -4779,7 +4798,7 @@ export default function App() {
         .modal-acciones { display: flex; justify-content: flex-end; gap: 8px; padding-top: 16px; grid-column: 1 / -1; }
 
         /* Calendario — Google Calendar embebido */
-        .view-sin-padding-abajo { display: flex; flex-direction: column; padding-bottom: 0; }
+        .view-sin-padding-abajo { display: flex; flex-direction: column; padding-bottom: 24px; }
         .view-head-calendario { flex-shrink: 0; }
         .calendario-acciones-head { display: flex; gap: 8px; flex-wrap: wrap; }
         .calendario-embed-col { flex: 1; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
