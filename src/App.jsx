@@ -5155,6 +5155,25 @@ export default function App() {
           .buscador { max-width: none; }
           .modo-toggle button span, .modo-toggle button { font-size: 11.5px; }
         }
+
+        /* Tablet: una barra superior propia, más cómoda para trackpad y con
+           las etiquetas visibles. El teléfono conserva el dock compacto y el
+           escritorio, la barra lateral completa. */
+        @media (min-width: 700px) and (max-width: 1100px), (min-width: 700px) and (pointer: coarse) {
+          .sidebar {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            padding: 12px 24px;
+            gap: 22px;
+            box-shadow: 0 2px 10px rgba(35,39,31,0.16);
+          }
+          .sidebar-brand { display: flex; flex-shrink: 0; }
+          .sidebar-nav { justify-content: flex-start; gap: 6px; }
+          .sidebar-item { padding: 9px 12px; }
+          .sidebar-item span { display: inline; }
+          .sidebar-tema { width: auto; margin: 0 0 0 auto; padding: 8px 11px; flex-shrink: 0; }
+        }
       `}</style>
 
       <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} />
