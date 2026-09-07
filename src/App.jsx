@@ -5116,11 +5116,14 @@ export default function App() {
         .mapa-nodo-dot { display: none; }
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
 
-        @media (max-width: 860px) {
-          /* En móvil el scroll pertenece al documento, no a un contenedor
+        /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
+           En estos últimos, el cursor puede ser "fino" pero el scroll de un
+           panel interno no siempre recibe los gestos del trackpad. */
+        @media (max-width: 1100px), (pointer: coarse) {
+          /* En pantallas táctiles el scroll pertenece al documento, no a un contenedor
              interno. Así un gesto que empieza sobre una tarjeta, lista o
-             campo continúa desplazando toda la pantalla de forma fiable en
-             Safari/Chrome móviles. */
+             campo continúa desplazando toda la pantalla de forma fiable con
+             dedo o trackpad en Safari/Chrome. */
           html, body, #root { min-height: 100%; }
           body { margin: 0; overflow-x: hidden; }
           .app-shell { flex-direction: column; height: auto; min-height: 100dvh; overflow: visible; }
