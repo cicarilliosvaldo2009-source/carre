@@ -338,6 +338,19 @@ const GOOGLE_EVENTO_COLORES = {
   "1": "#7986cb", "2": "#33b679", "3": "#8e24aa", "4": "#e67c73", "5": "#f6c026",
   "6": "#f5511d", "7": "#039be5", "8": "#616161", "9": "#3f51b5", "10": "#0b8043", "11": "#d60000",
 };
+
+// Google Calendar solo admite su propia paleta de colorId. El selector de la
+// app, en cambio, permite cualquier hexadecimal; al guardar elegimos el color
+// de Google visualmente más cercano para mantener una experiencia uniforme.
+function colorIdGoogleMasCercano(hex) {
+  const rgb = (color) => [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+  const [r, g, b] = rgb(hex);
+  return Object.entries(GOOGLE_EVENTO_COLORES).reduce((mejor, [id, color]) => {
+    const [cr, cg, cb] = rgb(color);
+    const distancia = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+    return distancia < mejor.distancia ? { id, distancia } : mejor;
+  }, { id: "1", distancia: Infinity }).id;
+}
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const normalizarTexto = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 const ROMANO_O_NUM_SUELTO = /^(iv|ix|i{1,3}|vi{0,3}|x)$|^\d+$/;
@@ -1005,7 +1018,7 @@ function hsvToHex(h, s, v) {
   return `#${[r, g, b].map((n) => Math.round((n + m) * 255).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
-function ColorPicker({ value, onChange }) {
+function ColorPicker({ value, onChange, descripcionDegradado = "Elegí el color principal para identificar la materia de forma consistente en el calendario." }) {
   const [tab, setTab] = useState("solido");
   const pickerRef = useRef(null);
   const { h, s, v } = hexToHsv(value);
@@ -1036,7 +1049,7 @@ function ColorPicker({ value, onChange }) {
           <div ref={pickerRef} className="color-spectrum" style={{ "--hue": `hsl(${h} 100% 50%)`, "--x": `${s * 100}%`, "--y": `${(1 - v) * 100}%` }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickSV(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickSV(event); }}><span className="color-spectrum-thumb" /></div>
           <div className="color-hue" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickHue(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickHue(event); }}><span style={{ left: `${(h / 360) * 100}%` }} /></div>
         </>
-      ) : <div className="color-gradient-preview" style={{ background: `linear-gradient(135deg, ${value}, hsl(${(h + 72) % 360} 78% 58%))` }}><p>Elegí el color principal para identificar la materia de forma consistente en el calendario.</p></div>}
+      ) : <div className="color-gradient-preview" style={{ background: `linear-gradient(135deg, ${value}, hsl(${(h + 72) % 360} 78% 58%))` }}><p>{descripcionDegradado}</p></div>}
       <div className="color-picker-footer">
         <span className="color-current" style={{ background: value }} aria-hidden="true" />
         <input className="color-hex-input" value={value} onChange={(event) => updateHex(event.target.value)} aria-label="Código hexadecimal" spellCheck="false" maxLength="7" />
@@ -3377,7 +3390,8 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
       vincularExamen: false,
       examenMateriaId: materias?.[0]?.id || "",
       examenTipo: "Parcial",
-      colorId: "",
+      color: COLORES[0].hex,
+      usarColorPersonalizado: false,
     }
   );
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -3426,11 +3440,20 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
         </label>
         <div className="campo campo-full">
           <span>Color del evento</span>
-          <div className="evento-color-selector" role="radiogroup" aria-label="Color del evento">
-            <button type="button" role="radio" aria-checked={!form.colorId} className={`evento-color-default ${!form.colorId ? "evento-color-activo" : ""}`} onClick={() => set("colorId", "")}>Predeterminado</button>
-            {Object.entries(GOOGLE_EVENTO_COLORES).map(([id, color]) => (
-              <button type="button" key={id} role="radio" aria-checked={form.colorId === id} className={`evento-color-opcion ${form.colorId === id ? "evento-color-activo" : ""}`} style={{ background: color }} title={`Color ${id}`} aria-label={`Elegir color ${id}`} onClick={() => set("colorId", id)} />
-            ))}
+          <div className="evento-color-personalizado">
+            <button
+              type="button"
+              className={`evento-color-default ${!form.usarColorPersonalizado ? "evento-color-activo" : ""}`}
+              aria-pressed={!form.usarColorPersonalizado}
+              onClick={() => set("usarColorPersonalizado", false)}
+            >
+              Predeterminado de Google
+            </button>
+            <ColorPicker
+              value={form.color || COLORES[0].hex}
+              onChange={(color) => setForm((f) => ({ ...f, color, usarColorPersonalizado: true }))}
+              descripcionDegradado="Elegí el color principal para identificar este evento en el calendario."
+            />
           </div>
         </div>
 
@@ -3683,7 +3706,9 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
       start: { dateTime: `${form.fecha}T${form.horaInicio}:00`, timeZone: "America/Argentina/Mendoza" },
       end: { dateTime: `${form.fecha}T${form.horaFin}:00`, timeZone: "America/Argentina/Mendoza" },
     };
-    if (form.colorId) payload.colorId = form.colorId;
+    // "0" devuelve el evento al color predeterminado cuando se está editando
+    // uno que antes tenía un color personalizado.
+    payload.colorId = form.usarColorPersonalizado ? colorIdGoogleMasCercano(form.color) : "0";
     if (form.repetir && form.diasRepeticion && form.diasRepeticion.length > 0) {
       const DIA_RRULE = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]; // índice = Date.getDay()
       const byday = form.diasRepeticion.map((d) => DIA_RRULE[d]).join(",");
@@ -3764,7 +3789,8 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
       fecha: inicio ? toDateStr(inicio) : toDateStr(new Date()),
       horaInicio: hhmm(inicio),
       horaFin: hhmm(fin),
-      colorId: ev.colorId || "",
+      color: GOOGLE_EVENTO_COLORES[ev.colorId] || COLORES[0].hex,
+      usarColorPersonalizado: !!GOOGLE_EVENTO_COLORES[ev.colorId],
     };
   };
 
@@ -5052,6 +5078,7 @@ export default function App() {
         .dia-repeticion-chip:hover { border-color: var(--forest); }
         .dia-repeticion-chip-activo { background: var(--forest); border-color: var(--forest); color: #F6F3E7; }
         .evento-color-selector { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .evento-color-personalizado { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
         .evento-color-default { border: 1px solid var(--line); border-radius: 18px; padding: 5px 10px; background: var(--input-bg); color: var(--ink-soft); font: inherit; font-size: 12px; cursor: pointer; }
         .evento-color-opcion { width: 24px; height: 24px; border: 2px solid transparent; border-radius: 50%; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); }
         .evento-color-selector .evento-color-activo { outline: 2px solid var(--ink); outline-offset: 2px; }
