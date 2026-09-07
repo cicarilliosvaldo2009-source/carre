@@ -2987,7 +2987,7 @@ function MapaMaterias({ materias, abrirMateria }) {
             return (
               <button
                 key={m.id}
-                className="mapa-nodo"
+                className={`mapa-nodo ${estadoNodo === "bloqueada" ? "mapa-nodo-bloqueada" : ""}`}
                 style={{
                   left: pos.x, top: pos.y, width: MAPA_NODO_W, height: MAPA_NODO_H,
                   "--sc": MAPA_NODO_COLOR[estadoNodo], "--mc": m.color,
@@ -5052,6 +5052,9 @@ export default function App() {
         .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; }
         .mapa-col-titulo { position: absolute; top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
         .mapa-nodo { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s; font-family: inherit; }
+        .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 22%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
+        .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
+        .mapa-nodo-bloqueada .mapa-nodo-estado, .mapa-nodo-bloqueada .mapa-nodo-lock { color: var(--brick); }
         .mapa-nodo:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 5; }
         .mapa-nodo-nombre { font-size: 12.5px; font-weight: 700; color: var(--ink); line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .mapa-nodo-estado { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--sc); font-weight: 700; }
