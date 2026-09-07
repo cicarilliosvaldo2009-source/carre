@@ -5117,8 +5117,15 @@ export default function App() {
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
 
         @media (max-width: 860px) {
-          .app-shell { flex-direction: column; min-height: 100dvh; }
-          .main-area, .view, .calendario-persistente { min-height: 0; }
+          /* En móvil el scroll pertenece al documento, no a un contenedor
+             interno. Así un gesto que empieza sobre una tarjeta, lista o
+             campo continúa desplazando toda la pantalla de forma fiable en
+             Safari/Chrome móviles. */
+          html, body, #root { min-height: 100%; }
+          body { margin: 0; overflow-x: hidden; }
+          .app-shell { flex-direction: column; height: auto; min-height: 100dvh; overflow: visible; }
+          .main-area { display: block; flex: 0 0 auto; min-height: auto; }
+          .view, .calendario-persistente, .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
           .sidebar { width: 100%; flex-direction: row; align-items: center; padding: 10px 14px; gap: 14px; }
           .sidebar-brand { display: none; }
           .sidebar-nav { flex-direction: row; flex: 1; justify-content: space-around; }
@@ -5127,7 +5134,15 @@ export default function App() {
           .sidebar-reset { display: none; }
           .view { padding: 20px; max-height: none; }
           .dos-columnas, .form-grid, .resumenes-layout { grid-template-columns: 1fr; }
-          .detalle-panel { width: 100%; }
+          /* Los overlays mantienen su propio scroll: evita que un modal o el
+             detalle de una materia queden cortados por el alto del viewport. */
+          .modal-overlay, .detalle-overlay { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 12px; }
+          .modal-card { width: 100%; max-height: none; overflow: visible; }
+          .detalle-overlay { justify-content: stretch; padding: 0; }
+          .detalle-panel { width: 100%; height: auto; min-height: 100%; overflow: visible; }
+          /* Estas superficies sí requieren scroll interno horizontal; el eje
+             vertical permanece disponible para desplazar la página. */
+          .semana-grid-wrap, .mapa-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
           .tabs-anio { flex-wrap: wrap; }
           .tab-anio { flex: 1 1 45%; border-bottom: 1px solid rgba(0,0,0,0.08); }
           .fila-pill { display: none; }
