@@ -831,9 +831,12 @@ function useEsTablet() {
   const detectar = () => {
     if (typeof window === "undefined" || typeof navigator === "undefined") return false;
     const ua = navigator.userAgent || "";
-    const esSistemaTablet = /Android|iPad|Tablet|Silk|Kindle|CrOS/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    const esChromeOS = /CrOS/i.test(ua);
+    const esSistemaTablet = /Android|iPad|Tablet|Silk|Kindle/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
     const ladoMenor = Math.min(window.innerWidth, window.innerHeight);
-    return esSistemaTablet && navigator.maxTouchPoints > 0 && ladoMenor >= 600;
+    // ChromeOS puede no exponer touch points aunque se esté usando como
+    // tablet con teclado/trackpad (como en este caso).
+    return ladoMenor >= 600 && (esChromeOS || (esSistemaTablet && navigator.maxTouchPoints > 0));
   };
   const [esTablet, setEsTablet] = useState(detectar);
 
