@@ -824,6 +824,32 @@ function useGoogleAuth(clientId) {
   return { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo };
 }
 
+// Algunas tablets con teclado/trackpad informan un viewport y un puntero de
+// escritorio. Reconocemos el dispositivo táctil para no aplicarles por error
+// la interfaz de PC completa ni el scroll interno de escritorio.
+function useEsTablet() {
+  const detectar = () => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    const esSistemaTablet = /Android|iPad|Tablet|Silk|Kindle|CrOS/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    const ladoMenor = Math.min(window.innerWidth, window.innerHeight);
+    return esSistemaTablet && navigator.maxTouchPoints > 0 && ladoMenor >= 600;
+  };
+  const [esTablet, setEsTablet] = useState(detectar);
+
+  useEffect(() => {
+    const actualizar = () => setEsTablet(detectar());
+    window.addEventListener("resize", actualizar);
+    window.addEventListener("orientationchange", actualizar);
+    return () => {
+      window.removeEventListener("resize", actualizar);
+      window.removeEventListener("orientationchange", actualizar);
+    };
+  }, []);
+
+  return esTablet;
+}
+
 /* ---------- Llamadas a la API de Google Calendar ---------- */
 
 async function extraerErrorApi(res) {
@@ -4512,6 +4538,7 @@ export default function App() {
     setConfettiActivo(true);
   };
   const [confirmarReset, setConfirmarReset] = useState(false);
+  const esTablet = useEsTablet();
 
   const abrirMateria = (id) => {
     setMateriaAbiertaId(id);
@@ -4551,7 +4578,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app-shell ${tema === "oscuro" ? "app-shell-oscuro" : ""}`}>
+    <div className={`app-shell ${tema === "oscuro" ? "app-shell-oscuro" : ""} ${esTablet ? "app-shell-tablet" : ""}`}>
       <style>{`
         ${FONT_IMPORT}
 
@@ -5160,53 +5187,31 @@ export default function App() {
 
         /* Tablet: conserva el lienzo de escritorio y el scroll del documento
            (más fiable con trackpad), pero usa una barra lateral compacta. */
-        @media (min-width: 700px) and (max-width: 1100px), (min-width: 700px) and (pointer: coarse) {
-          .sidebar {
-            position: sticky;
-            top: 0;
-            align-self: flex-start;
-            z-index: 40;
-            width: 68px;
-            height: 100dvh;
-            flex-direction: column;
-            align-items: center;
-            padding: 16px 12px;
-            gap: 16px;
-            box-shadow: 2px 0 10px rgba(35,39,31,0.12);
-          }
-          .app-shell { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
-          .main-area { display: block; flex: 1 1 auto; min-height: auto; }
-          .view, .calendario-persistente, .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
-          .view { padding: 32px 36px; }
-          .sidebar-brand, .sidebar-carne, .sidebar-reset { display: none; }
-          .sidebar-nav { flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
-          .sidebar-item { width: 44px; justify-content: center; padding: 11px; }
-          .sidebar-item span { display: none; }
-          .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
-          .sidebar-tema svg { width: 16px; height: 16px; }
-
-          .dos-columnas { grid-template-columns: 1.2fr 1fr; }
-          .form-grid { grid-template-columns: 1fr 1fr; }
-          .resumenes-layout { grid-template-columns: 150px 1fr; }
-          .tabs-anio { flex-wrap: nowrap; }
-          .tab-anio { flex: 1; border-bottom: none; }
-          .fila-historial { padding-left: 0; }
-          .fila-historial-grupos { grid-template-columns: 1fr 1fr; gap: 20px; }
-          .materias-toolbar { flex-direction: row; align-items: center; }
-          .buscador { max-width: 320px; }
-
-          .modal-overlay { align-items: center; overflow: hidden; padding: 20px; }
-          .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
-          .modal-wide { width: 620px; }
-          .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
-          .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; }
-        }
-          .sidebar-brand { display: flex; flex-shrink: 0; }
-          .sidebar-nav { justify-content: flex-start; gap: 6px; }
-          .sidebar-item { padding: 9px 12px; }
-          .sidebar-item span { display: inline; }
-          .sidebar-tema { width: auto; margin: 0 0 0 auto; padding: 8px 11px; flex-shrink: 0; }
-        }
+        .app-shell-tablet { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
+        .app-shell-tablet .sidebar { position: sticky; top: 0; align-self: flex-start; z-index: 40; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
+        .app-shell-tablet .main-area { display: block; flex: 1 1 auto; min-height: auto; }
+        .app-shell-tablet .view, .app-shell-tablet .calendario-persistente, .app-shell-tablet .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
+        .app-shell-tablet .view { padding: 32px 36px; }
+        .app-shell-tablet .sidebar-brand, .app-shell-tablet .sidebar-carne, .app-shell-tablet .sidebar-reset { display: none; }
+        .app-shell-tablet .sidebar-nav { flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
+        .app-shell-tablet .sidebar-item { width: 44px; justify-content: center; padding: 11px; }
+        .app-shell-tablet .sidebar-item span { display: none; }
+        .app-shell-tablet .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
+        .app-shell-tablet .sidebar-tema svg { width: 16px; height: 16px; }
+        .app-shell-tablet .dos-columnas { grid-template-columns: 1.2fr 1fr; }
+        .app-shell-tablet .form-grid { grid-template-columns: 1fr 1fr; }
+        .app-shell-tablet .resumenes-layout { grid-template-columns: 150px 1fr; }
+        .app-shell-tablet .tabs-anio { flex-wrap: nowrap; }
+        .app-shell-tablet .tab-anio { flex: 1; border-bottom: none; }
+        .app-shell-tablet .fila-historial { padding-left: 0; }
+        .app-shell-tablet .fila-historial-grupos { grid-template-columns: 1fr 1fr; gap: 20px; }
+        .app-shell-tablet .materias-toolbar { flex-direction: row; align-items: center; }
+        .app-shell-tablet .buscador { max-width: 320px; }
+        .app-shell-tablet .modal-overlay { align-items: center; overflow: hidden; padding: 20px; }
+        .app-shell-tablet .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
+        .app-shell-tablet .modal-wide { width: 620px; }
+        .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
+        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; }
       `}</style>
 
       <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} />
