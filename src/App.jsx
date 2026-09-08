@@ -939,8 +939,8 @@ async function apiEliminarEvento(accessToken, calendarId, eventId) {
    PIEZAS CHICAS DE UI
    ========================================================================= */
 
-// Tomate con silueta más orgánica, hojas definidas y un pequeño detalle de
-// reloj: conserva el trazo editorial del resto de la interfaz.
+// Ícono lineal y compacto para mantener el mismo lenguaje visual del resto
+// de la navegación.
 function IconTomate({ size = 16, className = "" }) {
   return (
     <svg
@@ -948,10 +948,8 @@ function IconTomate({ size = 16, className = "" }) {
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
       className={className}
     >
-      <path fill="currentColor" fillOpacity="0.12" d="M12 7.2c-1.6-1.55-4.75-1.34-6.42.72-2.32 2.85-1.83 8.1.65 10.77 2.86 3.08 8.68 3.08 11.54 0 2.48-2.67 2.97-7.92.65-10.77C16.75 5.86 13.6 5.65 12 7.2Z" />
-      <path d="M12 7.2c-1.6-1.55-4.75-1.34-6.42.72-2.32 2.85-1.83 8.1.65 10.77 2.86 3.08 8.68 3.08 11.54 0 2.48-2.67 2.97-7.92.65-10.77C16.75 5.86 13.6 5.65 12 7.2Z" />
-      <path d="M12 7.2V3.1M12 5.3 8.4 3.8l1.35 3.35M12 5.3l3.6-1.5-1.35 3.35" />
-      <path d="M9.6 13.2v2.15l1.55.9M14.4 13.2v2.15l-1.55.9" strokeWidth="1.55" />
+      <path d="M12 7.5c-3.9-2.9-7.5-.2-7.5 4.5 0 4.1 3.2 7.5 7.5 7.5s7.5-3.4 7.5-7.5c0-4.7-3.6-7.4-7.5-4.5Z" />
+      <path d="M12 7.5V4.3M12 4.3c1.1-1.1 2.5-1.4 3.8-1M12 4.3c-1.1-1.1-2.5-1.4-3.8-1" />
     </svg>
   );
 }
@@ -2288,7 +2286,8 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
           <div className="tab-panel">
             <section className="panel progreso-general">
               <div><span className="muted">Progreso de tareas</span><strong>{progresoTareasPct}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoTareasPct}%` }} /></div><small>{tareasCompletadasCount} de {tareas.length || 0} completadas</small></div>
-              <div><span className="muted">Material propio</span><strong>{materia.resumenes.length + notas.length}</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${Math.min(100, (materia.resumenes.length + notas.length) * 20)}%` }} /></div><small>resúmenes y notas</small></div>
+              <div><span className="muted">Asistencia</span>{asistenciaPct === null ? <><strong>—</strong><small>Cargá el período de cursada</small></> : <><strong className={asistenciaPct < ASISTENCIA_MINIMA ? "asistencia-estado-riesgo" : ""}>{Math.round(asistenciaPct)}%</strong><small>{asistencia.faltas} {asistencia.faltas === 1 ? "falta" : "faltas"} de {totalClases}{faltasDisponibles !== null && (faltasDisponibles >= 0 ? ` · podés faltar ${faltasDisponibles} más` : " · superaste el máximo de faltas")}<br /><button className="link-btn progreso-link" onClick={() => setTab("asistencia")}>Ver asistencia →</button></small></>}</div>
+              <div><span className="muted">Progreso de la cursada</span>{progresoCursadaPct === null ? <><strong>—</strong><small>Cargá el período de cursada</small></> : <><strong>{Math.round(progresoCursadaPct)}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoCursadaPct}%` }} /></div><small>del período transcurrido</small></>}</div>
             </section>
             <div className="dos-columnas materia-inicio-layout">
               <div className="columna-izquierda">
@@ -2366,38 +2365,6 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
               </div>
 
               <div className="columna-derecha">
-                <section className="panel">
-                  <h2>Asistencia</h2>
-                  {asistenciaPct === null ? (
-                    <p className="muted">Cargá el período de cursada para calcular tu asistencia.</p>
-                  ) : (
-                    <>
-                      <p className={`materia-inicio-dato ${asistenciaPct < ASISTENCIA_MINIMA ? "asistencia-estado-riesgo" : ""}`}>
-                        <strong>{Math.round(asistenciaPct)}%</strong> de asistencia
-                      </p>
-                      <p className="muted">
-                        {asistencia.faltas} {asistencia.faltas === 1 ? "falta" : "faltas"} de {totalClases} {totalClases === 1 ? "clase" : "clases"}
-                        {faltasDisponibles !== null && (
-                          faltasDisponibles >= 0
-                            ? ` · podés faltar ${faltasDisponibles} más`
-                            : " · superaste el máximo de faltas"
-                        )}
-                      </p>
-                    </>
-                  )}
-                  <button className="link-btn" onClick={() => setTab("asistencia")}>Ver asistencia →</button>
-                </section>
-
-                {progresoCursadaPct !== null && (
-                  <section className="panel">
-                    <h2>Progreso de la cursada</h2>
-                    <div className="progreso-barra">
-                      <div className="progreso-barra-relleno" style={{ width: `${progresoCursadaPct}%` }} />
-                    </div>
-                    <p className="muted">{Math.round(progresoCursadaPct)}% del período transcurrido</p>
-                  </section>
-                )}
-
                 {(correlativasPendientesMateria.length > 0 || materiasQueHabilita.length > 0) && (
                   <section className="panel">
                     <h2>Correlativas</h2>
@@ -5177,7 +5144,7 @@ export default function App() {
         .materia-inicio-nota { max-height: 90px; overflow: hidden; text-overflow: ellipsis; }
         .progreso-barra { width: 100%; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 6px; }
         .progreso-barra-relleno { height: 100%; background: var(--forest); border-radius: 999px; transition: width 0.2s; }
-        .progreso-general { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 14px; }.progreso-general > div { min-width: 0; }.progreso-general strong,.progreso-general small { display: block; }.progreso-general strong { font: 600 21px 'Fraunces', serif; margin-top: 3px; color: var(--forest); }.progreso-general small { color: var(--ink-soft); font-size: 10.5px; }
+        .progreso-general { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 14px; }.progreso-general > div { min-width: 0; }.progreso-general strong,.progreso-general small { display: block; }.progreso-general strong { font: 600 21px 'Fraunces', serif; margin-top: 3px; color: var(--forest); }.progreso-general small { color: var(--ink-soft); font-size: 10.5px; }.progreso-general .progreso-barra { margin: 8px 0 6px; }.progreso-link { display: inline; padding: 0; font-size: inherit; }
 
         /* Vista semanal (grilla horaria estilo Google Calendar) */
         .semana-grid-wrap { overflow-x: auto; }
@@ -5421,6 +5388,8 @@ export default function App() {
           .sidebar-reset { display: none; }
           .view { padding: 20px; max-height: none; }
           .dos-columnas, .form-grid, .resumenes-layout { grid-template-columns: 1fr; }
+          .progreso-general { grid-template-columns: 1fr 1fr; gap: 14px; }
+          .progreso-general > div:last-child { grid-column: 1 / -1; }
           /* Los overlays mantienen su propio scroll: evita que un modal o el
              detalle de una materia queden cortados por el alto del viewport. */
           .modal-overlay, .detalle-overlay { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 12px; }
