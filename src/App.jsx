@@ -1935,6 +1935,7 @@ function BloqueResumen({ bloque, onChange, onDelete }) {
 }
 
 function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal, asistenciaMinima, tabInicial = "inicio" }) {
+  const detalleOverlayRef = useRef(null);
   const [tab, setTab] = useState(tabInicial);
   const [resumenActivo, setResumenActivo] = useState(materia.resumenes[0]?.id || null);
   const [nuevoRecurso, setNuevoRecurso] = useState({ tipo: "Apunte", nombre: "", url: "", archivo: "", archivoNombre: "", archivoTipo: "" });
@@ -2237,8 +2238,29 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
 
   const resumen = materia.resumenes.find((r) => r.id === resumenActivo);
 
+  // Algunos trackpads de Android/Chrome no delegan la rueda a un panel fijo.
+  // Tomamos el evento no pasivo y desplazamos el contenedor que efectivamente
+  // tenga desborde; el desplazamiento táctil continúa siendo nativo.
+  useEffect(() => {
+    const overlay = detalleOverlayRef.current;
+    if (!overlay) return undefined;
+    const desplazarConRueda = (event) => {
+      if (!event.deltaY || event.ctrlKey) return;
+      const panel = overlay.querySelector(".detalle-panel");
+      const destino = [overlay, panel].find((elemento) => elemento && elemento.scrollHeight > elemento.clientHeight + 1);
+      if (!destino) return;
+      const maximo = destino.scrollHeight - destino.clientHeight;
+      const siguiente = Math.max(0, Math.min(maximo, destino.scrollTop + event.deltaY));
+      if (siguiente === destino.scrollTop) return;
+      event.preventDefault();
+      destino.scrollTop = siguiente;
+    };
+    overlay.addEventListener("wheel", desplazarConRueda, { passive: false });
+    return () => overlay.removeEventListener("wheel", desplazarConRueda);
+  }, []);
+
   return (
-    <div className="detalle-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div ref={detalleOverlayRef} className="detalle-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="detalle-panel">
         <div className="detalle-head" style={{ "--mc": materia.color }}>
           <button className="volver" onClick={onClose}><ArrowLeft size={18} /> Volver</button>
@@ -4976,7 +4998,7 @@ export default function App() {
         .panel-pendientes-contador { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: #F6F3E7; background: var(--ochre); border-radius: 20px; padding: 2px 10px; }
         .plan-estudio > .muted { margin: -6px 0 10px; }.plan-estudio-lista { display: flex; flex-direction: column; gap: 4px; }.plan-estudio-lista button { display: grid; grid-template-columns: 8px 1fr auto; gap: 10px; align-items: center; padding: 9px 6px; border: 0; border-radius: 8px; text-align: left; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }.plan-estudio-lista button:hover { background: var(--paper-2); }.plan-estudio-lista button > span { width: 7px; height: 30px; border-radius: 6px; }.plan-estudio-lista strong,.plan-estudio-lista small { display: block; }.plan-estudio-lista strong { font-size: 13px; }.plan-estudio-lista small { color: var(--ink-soft); font-size: 11.5px; margin-top: 2px; }.plan-estudio-lista b { font: 700 11px 'IBM Plex Mono', monospace; color: var(--forest); white-space: nowrap; }
         .lista-pendientes-grande { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-        .pendiente-fila-grande { display: flex; align-items: center; gap: 14px; padding: 13px 10px; border-radius: 10px; border-bottom: 1px solid var(--line-soft); }
+        .pendiente-fila-grande { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; column-gap: 14px; padding: 13px 10px; border-radius: 10px; border-bottom: 1px solid var(--line-soft); }
         .pendiente-fila-grande:last-child { border-bottom: none; }
         .pendiente-fila-grande:hover { background: var(--paper-2); }
         .pendiente-texto-grande { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 2px; cursor: pointer; }
@@ -5314,7 +5336,7 @@ export default function App() {
         .tarea-progreso { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: var(--ink-soft); background: var(--paper-2); border-radius: 10px; padding: 2px 8px; flex-shrink: 0; }
         .tarea-recurrente { display: inline-flex; align-items: center; gap: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent); border-radius: 10px; padding: 1px 7px 1px 6px; flex-shrink: 0; }
         .filtros-tareas { margin: 0 0 12px; }.tarea-prioridad,.tarea-etiquetas em { display: inline-flex; align-items: center; border-radius: 10px; padding: 2px 7px; font: 700 9.5px 'IBM Plex Mono', monospace; text-transform: uppercase; font-style: normal; }.tarea-prioridad-alta { color: var(--brick); background: color-mix(in srgb, var(--brick) 13%, transparent); }.tarea-prioridad-media { color: var(--ochre); background: color-mix(in srgb, var(--ochre) 14%, transparent); }.tarea-prioridad-baja { color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent); }.tarea-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }.tarea-etiquetas em { color: var(--ink-soft); background: var(--paper-2); text-transform: none; font-weight: 600; }
-        .tarea-fecha { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: var(--ink-soft); }
+        .tarea-fecha { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: var(--ink-soft); white-space: nowrap; text-align: right; }
         .tarea-fecha-vencida { color: var(--brick); }
         .tarea-fecha-urgente { color: var(--brick); }
         .tarea-fecha-proxima { color: var(--ochre); }
@@ -5419,6 +5441,8 @@ export default function App() {
           .configuracion-selects { grid-template-columns: 1fr; gap: 0; }
           .progreso-general { grid-template-columns: 1fr 1fr; gap: 14px; }
           .progreso-general > div:last-child { grid-column: 1 / -1; }
+          .pendiente-fila-grande { grid-template-columns: max-content minmax(0, 1fr); row-gap: 5px; }
+          .pendiente-fila-grande .tarea-fecha { grid-column: 2; text-align: left; }
           /* Los overlays mantienen su propio scroll: evita que un modal o el
              detalle de una materia queden cortados por el alto del viewport. */
           .modal-overlay, .detalle-overlay { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 12px; }
