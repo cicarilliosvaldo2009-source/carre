@@ -101,7 +101,7 @@ function tituloAutomaticoExamen(form, examenesExistentes) {
   return form.tipo; // "Final" u "Otro"
 }
 
-const ASISTENCIA_MINIMA = 75; // % habitual para no quedar libre por faltas
+const ASISTENCIA_MINIMA_DEFAULT = 75;
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
@@ -576,6 +576,7 @@ const CALENDAR_KEY = "planificador-google-calendar-v1";
 const GOOGLE_CLIENT_KEY = "planificador-google-client-id-v1";
 const SESIONES_KEY = "planificador-sesiones-estudio-v1";
 const NOTIFICACIONES_KEY = "planificador-notificaciones-v1";
+const CONFIGURACION_KEY = "planificador-configuracion-v1";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
 /* Adaptador de guardado: usa window.storage cuando corre como artifact
@@ -1156,7 +1157,7 @@ function BusquedaGlobal({ materias, onAbrir, onClose }) {
   </div>;
 }
 
-function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema, onBuscar, onNotificaciones }) {
+function Sidebar({ view, setView, materias, onResetear, onBuscar }) {
   const total = materias.length;
   const aprobadas = materias.filter((m) => m.estado === "Aprobada").length;
   const pct = total ? Math.round((aprobadas / total) * 100) : 0;
@@ -1204,11 +1205,9 @@ function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema, onBu
           <span>{aprobadas} de {total} aprobadas</span>
         </div>
       </div>
-      <button className="sidebar-tema" onClick={onToggleTema}>
-        {tema === "oscuro" ? <Sun size={13} /> : <Moon size={13} />}
-        {tema === "oscuro" ? "Modo claro" : "Modo oscuro"}
+      <button className={`sidebar-tema ${view === "configuracion" ? "sidebar-item-active" : ""}`} onClick={() => setView("configuracion")}>
+        <Settings size={13} /> Configuración
       </button>
-      <button className="sidebar-tema" onClick={onNotificaciones}><Bell size={13} /> Recordatorios</button>
       <button className="sidebar-reset" onClick={onResetear}>
         <Trash2 size={12} /> Restablecer datos de ejemplo
       </button>
@@ -1234,7 +1233,7 @@ function PlanDeEstudio({ materias, abrirMateria }) {
   return <section className="panel plan-estudio"><div className="panel-pendientes-head"><h2>Plan de estudio sugerido</h2><span className="panel-pendientes-contador">Hoy</span></div><p className="muted">Priorizado por fecha, tareas pendientes y prioridad.</p><div className="plan-estudio-lista">{sugerencias.map((s) => <button key={s.materia.id} onClick={() => abrirMateria(s.materia.id, s.proximo?.tipo ? "examenes" : "tareas")}><span style={{ background: s.materia.color }} /><div><strong>{s.materia.nombre}</strong><small>{s.proximo ? `${s.proximo.titulo} · ${textoUrgencia(s.proximo.fecha)}` : "Repaso y avance"}</small></div><b>{s.minutos} min</b></button>)}</div></section>;
 }
 
-function Inicio({ materias, setView, abrirMateria, onCompletarTarea }) {
+function Inicio({ materias, setView, abrirMateria, onCompletarTarea, asistenciaMinima }) {
   const MAX_PENDIENTES_VISIBLE = 5;
   const [pendientesExpandido, setPendientesExpandido] = useState(false);
   const pendientesOrdenadas = useMemo(() => {
@@ -1264,12 +1263,12 @@ function Inicio({ materias, setView, abrirMateria, onCompletarTarea }) {
         const a = m.asistencia || { faltas: 0, inicioCursada: "", finCursada: "" };
         const total = contarClasesEnRango(m.horarios, a.inicioCursada, a.finCursada);
         if (total === null) return null;
-        const max = Math.floor(total * (1 - ASISTENCIA_MINIMA / 100));
+        const max = Math.floor(total * (1 - asistenciaMinima / 100));
         const disponibles = max - (a.faltas || 0);
         return disponibles === 1 || disponibles === 2 ? { materia: m, disponibles } : null;
       })
       .filter(Boolean);
-  }, [materias]);
+  }, [materias, asistenciaMinima]);
 
   const nombreDiaHoy = DIAS[(new Date().getDay() + 6) % 7]; // domingo=6, fuera de rango si es finde
   const claseHoy = DIAS.includes(nombreDiaHoy);
@@ -1935,7 +1934,7 @@ function BloqueResumen({ bloque, onChange, onDelete }) {
   );
 }
 
-function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal, tabInicial = "inicio" }) {
+function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal, asistenciaMinima, tabInicial = "inicio" }) {
   const [tab, setTab] = useState(tabInicial);
   const [resumenActivo, setResumenActivo] = useState(materia.resumenes[0]?.id || null);
   const [nuevoRecurso, setNuevoRecurso] = useState({ tipo: "Apunte", nombre: "", url: "", archivo: "", archivoNombre: "", archivoTipo: "" });
@@ -1989,7 +1988,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
   const promedio = calcularPromedio(examenes);
   const totalClases = contarClasesEnRango(materia.horarios, asistencia.inicioCursada, asistencia.finCursada);
   const asistenciaPct = calcularAsistenciaPct(asistencia, materia.horarios);
-  const maxFaltasPermitidas = totalClases !== null ? Math.floor(totalClases * (1 - ASISTENCIA_MINIMA / 100)) : null;
+  const maxFaltasPermitidas = totalClases !== null ? Math.floor(totalClases * (1 - asistenciaMinima / 100)) : null;
   const faltasDisponibles = maxFaltasPermitidas !== null ? maxFaltasPermitidas - asistencia.faltas : null;
 
   // Datos derivados para la pestaña "Inicio" (el workspace de la materia).
@@ -2286,7 +2285,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
           <div className="tab-panel">
             <section className="panel progreso-general">
               <div><span className="muted">Progreso de tareas</span><strong>{progresoTareasPct}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoTareasPct}%` }} /></div><small>{tareasCompletadasCount} de {tareas.length || 0} completadas</small></div>
-              <div><span className="muted">Asistencia</span>{asistenciaPct === null ? <><strong>—</strong><small>Cargá el período de cursada</small></> : <><strong className={asistenciaPct < ASISTENCIA_MINIMA ? "asistencia-estado-riesgo" : ""}>{Math.round(asistenciaPct)}%</strong><small>{asistencia.faltas} {asistencia.faltas === 1 ? "falta" : "faltas"} de {totalClases}{faltasDisponibles !== null && (faltasDisponibles >= 0 ? ` · podés faltar ${faltasDisponibles} más` : " · superaste el máximo de faltas")}<br /><button className="link-btn progreso-link" onClick={() => setTab("asistencia")}>Ver asistencia →</button></small></>}</div>
+              <div><span className="muted">Asistencia</span>{asistenciaPct === null ? <><strong>—</strong><small>Cargá el período de cursada</small></> : <><strong className={asistenciaPct < asistenciaMinima ? "asistencia-estado-riesgo" : ""}>{Math.round(asistenciaPct)}%</strong><small>{asistencia.faltas} {asistencia.faltas === 1 ? "falta" : "faltas"} de {totalClases}{faltasDisponibles !== null && (faltasDisponibles >= 0 ? ` · podés faltar ${faltasDisponibles} más` : " · superaste el máximo de faltas")}<br /><button className="link-btn progreso-link" onClick={() => setTab("asistencia")}>Ver asistencia →</button></small></>}</div>
               <div><span className="muted">Progreso de la cursada</span>{progresoCursadaPct === null ? <><strong>—</strong><small>Cargá el período de cursada</small></> : <><strong>{Math.round(progresoCursadaPct)}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoCursadaPct}%` }} /></div><small>del período transcurrido</small></>}</div>
             </section>
             <div className="dos-columnas materia-inicio-layout">
@@ -2669,7 +2668,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                   {asistenciaPct !== null && (
                     <circle
                       cx="40" cy="40" r="34" fill="none"
-                      stroke={asistenciaPct >= ASISTENCIA_MINIMA ? "#6FB37E" : asistenciaPct >= ASISTENCIA_MINIMA - 15 ? "var(--ochre)" : "var(--brick)"}
+                      stroke={asistenciaPct >= asistenciaMinima ? "#6FB37E" : asistenciaPct >= asistenciaMinima - 15 ? "var(--ochre)" : "var(--brick)"}
                       strokeWidth="7" strokeLinecap="round"
                       strokeDasharray={`${(asistenciaPct / 100) * 213.6} 213.6`}
                       transform="rotate(-90 40 40)"
@@ -2681,12 +2680,12 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                 </div>
               </div>
               <div className="asistencia-datos">
-                <p className={`asistencia-estado ${asistenciaPct !== null && asistenciaPct < ASISTENCIA_MINIMA ? "asistencia-estado-riesgo" : ""}`}>
+                <p className={`asistencia-estado ${asistenciaPct !== null && asistenciaPct < asistenciaMinima ? "asistencia-estado-riesgo" : ""}`}>
                   {asistenciaPct === null
                     ? "Cargá el período de cursada para calcular tu asistencia."
-                    : asistenciaPct >= ASISTENCIA_MINIMA
+                    : asistenciaPct >= asistenciaMinima
                     ? "Vas bien de asistencia."
-                    : "Estás por debajo del mínimo habitual (75%)."}
+                    : `Estás por debajo del mínimo configurado (${asistenciaMinima}%).`}
                 </p>
                 {totalClases !== null && (
                   <span className="muted">
@@ -3189,7 +3188,7 @@ function MapaMaterias({ materias, abrirMateria }) {
   );
 }
 
-function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbiertaId, tabMateriaInicial, onAprobada, googleCal }) {
+function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbiertaId, tabMateriaInicial, onAprobada, googleCal, asistenciaMinima }) {
   const [formAbierto, setFormAbierto] = useState(false);
   const [editando, setEditando] = useState(null);
   const [filtro, setFiltro] = useState("Cursando");
@@ -3399,6 +3398,7 @@ function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbier
           onClose={() => setMateriaAbiertaId(null)}
           onEdit={() => { setEditando(materiaAbierta); setFormAbierto(true); }}
           googleCal={googleCal}
+          asistenciaMinima={asistenciaMinima}
           tabInicial={tabMateriaInicial}
         />
       )}
@@ -4630,27 +4630,40 @@ function FocusView({ materias, sesiones, agregarSesion }) {
    APP
    ========================================================================= */
 
-function ConfiguracionNotificaciones({ config, setConfig, onClose }) {
+function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones }) {
   const [permiso, setPermiso] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
   const activar = async () => {
     if (!("Notification" in window)) return;
     const resultado = await Notification.requestPermission();
     setPermiso(resultado);
-    if (resultado === "granted") setConfig((c) => ({ ...c, activadas: true }));
+    if (resultado === "granted") setConfigNotificaciones((c) => ({ ...c, activadas: true }));
   };
-  const toggle = (campo) => setConfig((c) => ({ ...c, [campo]: !c[campo] }));
-  return <Modal title="Recordatorios reales" onClose={onClose}>
-    <p className="muted" style={{ lineHeight: 1.5, marginBottom: 16 }}>Recibí avisos del sistema aunque esta pestaña quede en segundo plano. Para avisos con la app completamente cerrada hace falta instalarla como PWA y un servicio de notificaciones del dispositivo.</p>
-    {permiso !== "granted" ? <button className="btn-primario" onClick={activar}><BellRing size={16} /> Permitir notificaciones</button> : <p className="notificacion-permitida"><Check size={15} /> Notificaciones permitidas</p>}
-    <div className="notificaciones-opciones">
-      {[['tareas', 'Vencimientos de tareas'], ['examenes', 'Parciales y exámenes'], ['clases', 'Clases próximas'], ['asistencia', 'Riesgo de asistencia']].map(([id, label]) => <label key={id} className="notificacion-opcion"><span>{label}</span><input type="checkbox" checked={config[id]} disabled={permiso !== "granted"} onChange={() => toggle(id)} /></label>)}
-    </div>
-    <label className="notificacion-select">Avisar de clases con anticipación<select value={config.minutosClase} onChange={(e) => setConfig((c) => ({ ...c, minutosClase: Number(e.target.value) }))}><option value={15}>15 minutos</option><option value={30}>30 minutos</option><option value={60}>1 hora</option></select></label>
-    <label className="notificacion-select">Avisar de vencimientos y exámenes<select value={config.diasAnticipacion} onChange={(e) => setConfig((c) => ({ ...c, diasAnticipacion: Number(e.target.value) }))}><option value={0}>El mismo día</option><option value={1}>1 día antes</option><option value={2}>2 días antes</option><option value={7}>1 semana antes</option></select></label>
-  </Modal>;
+  const toggle = (campo) => setConfigNotificaciones((c) => ({ ...c, [campo]: !c[campo] }));
+  return <div className="view configuracion-view">
+    <header className="view-head"><div><p className="eyebrow">Preferencias</p><h1>Configuración</h1></div></header>
+    <section className="panel configuracion-seccion">
+      <div><h2>Apariencia</h2><p className="muted">Elegí cómo se ve el planificador.</p></div>
+      <button className="btn-secundario" onClick={onToggleTema}>{tema === "oscuro" ? <><Sun size={16} /> Usar modo claro</> : <><Moon size={16} /> Usar modo oscuro</>}</button>
+    </section>
+    <section className="panel configuracion-seccion">
+      <div><h2>Asistencia</h2><p className="muted">Porcentaje mínimo para no quedar libre por faltas.</p></div>
+      <label className="configuracion-porcentaje"><span>Mínimo</span><input type="number" min="0" max="100" value={asistenciaMinima} onChange={(e) => setAsistenciaMinima(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /><b>%</b></label>
+    </section>
+    <section className="panel configuracion-recordatorios">
+      <div><h2>Recordatorios</h2><p className="muted">Recibí avisos de tareas, exámenes, clases y asistencia.</p></div>
+      {permiso !== "granted" ? <button className="btn-primario" onClick={activar}><BellRing size={16} /> Permitir notificaciones</button> : <p className="notificacion-permitida"><Check size={15} /> Notificaciones permitidas</p>}
+      <div className="notificaciones-opciones">
+        {[['tareas', 'Vencimientos de tareas'], ['examenes', 'Parciales y exámenes'], ['clases', 'Clases próximas'], ['asistencia', 'Riesgo de asistencia']].map(([id, label]) => <label key={id} className="notificacion-opcion"><span>{label}</span><input type="checkbox" checked={configNotificaciones[id]} disabled={permiso !== "granted"} onChange={() => toggle(id)} /></label>)}
+      </div>
+      <div className="configuracion-selects">
+        <label className="notificacion-select">Avisar de clases con anticipación<select value={configNotificaciones.minutosClase} onChange={(e) => setConfigNotificaciones((c) => ({ ...c, minutosClase: Number(e.target.value) }))}><option value={15}>15 minutos</option><option value={30}>30 minutos</option><option value={60}>1 hora</option></select></label>
+        <label className="notificacion-select">Avisar de vencimientos y exámenes<select value={configNotificaciones.diasAnticipacion} onChange={(e) => setConfigNotificaciones((c) => ({ ...c, diasAnticipacion: Number(e.target.value) }))}><option value={0}>El mismo día</option><option value={1}>1 día antes</option><option value={2}>2 días antes</option><option value={7}>1 semana antes</option></select></label>
+      </div>
+    </section>
+  </div>;
 }
 
-function usarRecordatorios(materias, config, configuracionCargada) {
+function usarRecordatorios(materias, config, asistenciaMinima, configuracionCargada) {
   useEffect(() => { if (configuracionCargada) guardarValor(NOTIFICACIONES_KEY, config); }, [config, configuracionCargada]);
   useEffect(() => {
     if (!config.activadas || !("Notification" in window) || Notification.permission !== "granted") return;
@@ -4678,12 +4691,12 @@ function usarRecordatorios(materias, config, configuracionCargada) {
         });
         if (config.asistencia && m.estado === "Cursando") {
           const pct = calcularAsistenciaPct(m.asistencia, m.horarios);
-          if (pct !== null && pct < ASISTENCIA_MINIMA) avisar(`asistencia-${m.id}-${hoy}`, "Riesgo de asistencia", `${m.nombre}: ${Math.round(pct)}% de asistencia. El mínimo es ${ASISTENCIA_MINIMA}%.`);
+          if (pct !== null && pct < asistenciaMinima) avisar(`asistencia-${m.id}-${hoy}`, "Riesgo de asistencia", `${m.nombre}: ${Math.round(pct)}% de asistencia. El mínimo es ${asistenciaMinima}%.`);
         }
       });
     };
     revisar(); const intervalo = window.setInterval(revisar, 60000); return () => window.clearInterval(intervalo);
-  }, [materias, config]);
+  }, [materias, config, asistenciaMinima]);
 }
 
 export default function App() {
@@ -4705,9 +4718,10 @@ export default function App() {
   const [materiaAbiertaId, setMateriaAbiertaId] = useState(null);
   const [tabMateriaInicial, setTabMateriaInicial] = useState("inicio");
   const [busquedaAbierta, setBusquedaAbierta] = useState(false);
-  const [configNotificacionesAbierta, setConfigNotificacionesAbierta] = useState(false);
   const [configNotificaciones, setConfigNotificaciones] = useState({ activadas: false, tareas: true, examenes: true, clases: true, asistencia: true, minutosClase: 30, diasAnticipacion: 1 });
   const [configNotificacionesCargada, setConfigNotificacionesCargada] = useState(false);
+  const [configuracion, setConfiguracion] = useState({ asistenciaMinima: ASISTENCIA_MINIMA_DEFAULT });
+  const [configuracionCargada, setConfiguracionCargada] = useState(false);
   const [tema, setTema] = useState(() => {
     try { return window.localStorage.getItem("planificador-tema") || "claro"; } catch (e) { return "claro"; }
   });
@@ -4728,7 +4742,9 @@ export default function App() {
   const esTablet = useEsTablet();
 
   useEffect(() => { (async () => { const guardada = await cargarValor(NOTIFICACIONES_KEY); if (guardada) setConfigNotificaciones((c) => ({ ...c, ...guardada })); setConfigNotificacionesCargada(true); })(); }, []);
-  usarRecordatorios(materias, configNotificaciones, configNotificacionesCargada);
+  useEffect(() => { (async () => { const guardada = await cargarValor(CONFIGURACION_KEY); if (guardada) setConfiguracion((c) => ({ ...c, ...guardada })); setConfiguracionCargada(true); })(); }, []);
+  useEffect(() => { if (configuracionCargada) guardarValor(CONFIGURACION_KEY, configuracion); }, [configuracion, configuracionCargada]);
+  usarRecordatorios(materias, configNotificaciones, configuracion.asistenciaMinima, configNotificacionesCargada);
   useEffect(() => {
     const atajo = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") { e.preventDefault(); setBusquedaAbierta((v) => !v); }
@@ -4902,6 +4918,16 @@ export default function App() {
         .notificaciones-opciones { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); margin: 16px 0; }
         .notificacion-opcion { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; font-size: 13.5px; }.notificacion-opcion input { width: 17px; height: 17px; accent-color: var(--forest); }
         .notificacion-select { display: flex; flex-direction: column; gap: 6px; margin: 13px 0; color: var(--ink-soft); font-size: 12px; font-weight: 600; }.notificacion-select select { color: var(--ink); background: var(--input-bg); border: 1px solid var(--line); padding: 8px; border-radius: 6px; font: inherit; }
+        .configuracion-view { max-width: 760px; }
+        .configuracion-seccion { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
+        .configuracion-seccion h2, .configuracion-recordatorios h2 { margin-bottom: 5px; }
+        .configuracion-seccion .muted, .configuracion-recordatorios > div > .muted { margin: 0; }
+        .configuracion-porcentaje { display: flex; align-items: center; gap: 7px; flex-shrink: 0; color: var(--ink-soft); font-size: 12px; font-weight: 600; }
+        .configuracion-porcentaje input { width: 64px; padding: 8px; text-align: center; color: var(--ink); background: var(--input-bg); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+        .configuracion-porcentaje b { color: var(--ink); }
+        .configuracion-recordatorios { margin-bottom: 14px; }
+        .configuracion-recordatorios .btn-primario { margin-top: 16px; }
+        .configuracion-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
         .btn-primario { display: inline-flex; align-items: center; gap: 6px; background: var(--forest); color: #F6F3E7; border: none; padding: 10px 16px; border-radius: 8px; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
         .btn-primario:hover { background: var(--forest-dark); }
@@ -5388,6 +5414,8 @@ export default function App() {
           .sidebar-reset { display: none; }
           .view { padding: 20px; max-height: none; }
           .dos-columnas, .form-grid, .resumenes-layout { grid-template-columns: 1fr; }
+          .configuracion-seccion { align-items: flex-start; flex-direction: column; }
+          .configuracion-selects { grid-template-columns: 1fr; gap: 0; }
           .progreso-general { grid-template-columns: 1fr 1fr; gap: 14px; }
           .progreso-general > div:last-child { grid-column: 1 / -1; }
           /* Los overlays mantienen su propio scroll: evita que un modal o el
@@ -5409,14 +5437,14 @@ export default function App() {
           .modo-toggle button span, .modo-toggle button { font-size: 11.5px; }
         }
 
-        /* Tablet: conserva el lienzo de escritorio y el scroll del documento
-           (más fiable con trackpad), pero usa una barra lateral compacta. */
-        .app-shell-tablet { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
-        html:has(.app-shell-tablet), body:has(.app-shell-tablet) { height: auto; min-height: 100%; overflow-y: auto; }
+        /* Tablet: la barra queda anclada al viewport y el desplazamiento se
+           concentra en el contenido, incluso dentro del detalle de materia. */
+        .app-shell-tablet { flex-direction: row; height: 100dvh; min-height: 0; overflow: hidden; }
+        html:has(.app-shell-tablet), body:has(.app-shell-tablet) { height: 100%; min-height: 0; overflow: hidden; }
         #root:has(.app-shell-tablet) { min-height: 100dvh; }
-        .app-shell-tablet .sidebar { position: sticky; top: 0; align-self: flex-start; z-index: 40; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
-        .app-shell-tablet .main-area { display: block; flex: 1 1 auto; min-height: auto; }
-        .app-shell-tablet .view, .app-shell-tablet .calendario-persistente, .app-shell-tablet .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
+        .app-shell-tablet .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
+        .app-shell-tablet .main-area { display: flex; flex: 0 0 calc(100% - 68px); width: calc(100% - 68px); min-height: 0; margin-left: 68px; overflow: hidden; }
+        .app-shell-tablet .view, .app-shell-tablet .calendario-persistente, .app-shell-tablet .focus-persistente { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
         .app-shell-tablet .view { padding: 32px 36px; }
         .app-shell-tablet .sidebar-brand, .app-shell-tablet .sidebar-carne, .app-shell-tablet .sidebar-reset { display: none; }
         .app-shell-tablet .sidebar-nav { flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
@@ -5437,7 +5465,7 @@ export default function App() {
         .app-shell-tablet .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
         .app-shell-tablet .modal-wide { width: 620px; }
         .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
-        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100dvh; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
         /* Las siete secciones caben sin desplazamiento horizontal: cuatro
            pestañas por fila en lugar de una única fila demasiado larga. */
         .app-shell-tablet .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
@@ -5447,25 +5475,25 @@ export default function App() {
            puntero táctil. No cambia el contenido a versión móvil: mantiene
            el layout de PC y comprime exclusivamente la barra izquierda. */
         @media (min-width: 700px) and (pointer: coarse) {
-          html, body { height: auto; min-height: 100%; overflow-y: auto; }
+          html, body { height: 100%; min-height: 0; overflow: hidden; }
           #root { min-height: 100dvh; }
-          .app-shell { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
-          .sidebar { position: sticky; top: 0; align-self: flex-start; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
-          .main-area { display: block; flex: 1 1 auto; min-height: auto; }
-          .view, .calendario-persistente, .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
+          .app-shell { flex-direction: row; height: 100dvh; min-height: 0; overflow: hidden; }
+          .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 40; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
+          .main-area { display: flex; flex: 0 0 calc(100% - 68px); width: calc(100% - 68px); min-height: 0; margin-left: 68px; overflow: hidden; }
+          .view, .calendario-persistente, .focus-persistente { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
           .sidebar-brand, .sidebar-carne, .sidebar-reset { display: none; }
           .sidebar-nav { flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
           .sidebar-item { width: 44px; justify-content: center; padding: 11px; }
           .sidebar-item span { display: none; }
           .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
           .sidebar-tema svg { width: 16px; height: 16px; }
-          .detalle-panel { overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+          .detalle-panel { height: 100dvh; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
           .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
           .tab { min-width: 0; padding: 9px 5px; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
         }
       `}</style>
 
-      <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} onBuscar={() => setBusquedaAbierta(true)} onNotificaciones={() => setConfigNotificacionesAbierta(true)} />
+      <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} onBuscar={() => setBusquedaAbierta(true)} />
 
       <div className="main-area">
         {errorGuardado && (
@@ -5483,7 +5511,7 @@ export default function App() {
         ) : (
           <>
             {view === "inicio" && (
-              <Inicio materias={materias} setView={setView} abrirMateria={abrirMateria} onCompletarTarea={completarTarea} />
+              <Inicio materias={materias} setView={setView} abrirMateria={abrirMateria} onCompletarTarea={completarTarea} asistenciaMinima={configuracion.asistenciaMinima} />
             )}
             {view === "materias" && (
               <MateriasView
@@ -5494,6 +5522,7 @@ export default function App() {
                 tabMateriaInicial={tabMateriaInicial}
                 onAprobada={dispararConfetti}
                 googleCal={googleCal}
+                asistenciaMinima={configuracion.asistenciaMinima}
               />
             )}
             {/* Focus queda siempre montado (aunque no se vea) para que el timer
@@ -5512,6 +5541,7 @@ export default function App() {
                 onVincularExamenDesdeEvento={vincularExamenDesdeEvento}
               />
             </div>
+            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} />}
           </>
         )}
       </div>
@@ -5530,8 +5560,6 @@ export default function App() {
       )}
 
       {busquedaAbierta && <BusquedaGlobal materias={materias} onClose={() => setBusquedaAbierta(false)} onAbrir={(id, tab) => { setBusquedaAbierta(false); abrirMateria(id, tab); }} />}
-      {configNotificacionesAbierta && <ConfiguracionNotificaciones config={configNotificaciones} setConfig={setConfigNotificaciones} onClose={() => setConfigNotificacionesAbierta(false)} />}
-
       {confettiActivo && <Confetti key={confettiKey} onDone={() => setConfettiActivo(false)} />}
     </div>
   );
