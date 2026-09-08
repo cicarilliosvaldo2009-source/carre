@@ -1360,7 +1360,6 @@ function Inicio({ materias, setView, abrirMateria, onCompletarTarea, asistenciaM
 
       <div className="dos-columnas">
         <div className="columna-izquierda">
-          <PlanDeEstudio materias={materias} abrirMateria={abrirMateria} />
           {pendientesOrdenadas.length > 0 && (
             <section className="panel panel-pendientes-grande">
               <div className="panel-pendientes-head">
@@ -4345,7 +4344,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
 const FOCUS_RADIO = 96;
 const FOCUS_CIRCUNFERENCIA = 2 * Math.PI * FOCUS_RADIO;
 
-function FocusView({ materias, sesiones, agregarSesion }) {
+function FocusView({ materias, sesiones, agregarSesion, abrirMateria }) {
   const materiasCursando = useMemo(() => materias.filter((m) => m.estado === "Cursando"), [materias]);
   const [materiaId, setMateriaId] = useState(materiasCursando[0]?.id || "");
   const [duracionMin, setDuracionMin] = useState(25);
@@ -4633,6 +4632,7 @@ function FocusView({ materias, sesiones, agregarSesion }) {
           </div>
 
           <div className="columna-derecha">
+            <PlanDeEstudio materias={materias} abrirMateria={abrirMateria} />
             <section className="panel">
               <div className="focus-resumen-head">
                 <h2>Horas de estudio</h2>
@@ -5601,7 +5601,7 @@ function PlanificadorApp({ user, onSignOut }) {
             {/* Focus queda siempre montado (aunque no se vea) para que el timer
                 siga corriendo si cambiás de sección mientras estudiás. */}
             <div className="focus-persistente" style={{ display: view === "focus" ? "flex" : "none" }}>
-              <FocusView materias={materias} sesiones={sesiones} agregarSesion={agregarSesion} />
+              <FocusView materias={materias} sesiones={sesiones} agregarSesion={agregarSesion} abrirMateria={abrirMateria} />
             </div>
             {/* El calendario queda siempre montado (aunque no se vea) para que el
                 embed de Google no se recargue cada vez que cambiás de sección. */}
@@ -5684,6 +5684,20 @@ function Acceso() {
     } finally { setEnviando(false); }
   };
 
+  const entrarConGoogle = async () => {
+    setError(""); setMensaje(""); setEnviando(true);
+    try {
+      const { error: authError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
+      });
+      if (authError) throw authError;
+    } catch (err) {
+      setError(err.message || "No se pudo iniciar sesión con Google.");
+      setEnviando(false);
+    }
+  };
+
   return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20, background: "#F6F3E7", color: "#23271F", fontFamily: "IBM Plex Sans, sans-serif" }}>
     <section style={{ width: "min(100%, 410px)", background: "#FFFEF7", border: "1px solid #DAD4BC", borderRadius: 14, padding: 28, boxShadow: "0 8px 30px rgba(35,39,31,.10)" }}>
       <p style={{ margin: 0, color: "#8A6F34", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>Planificador de carrera</p>
@@ -5696,6 +5710,8 @@ function Acceso() {
         {mensaje && <p style={{ margin: 0, color: "#356446", fontSize: 13 }}>{mensaje}</p>}
         <button className="btn-primario" disabled={enviando} style={{ justifyContent: "center", marginTop: 4 }}>{enviando ? "Procesando…" : modo === "entrar" ? "Iniciar sesión" : "Crear cuenta"}</button>
       </form>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "18px 0 12px", color: "#8B887D", fontSize: 12 }}><span style={{ height: 1, flex: 1, background: "#DED8C2" }} />o<span style={{ height: 1, flex: 1, background: "#DED8C2" }} /></div>
+      <button type="button" onClick={entrarConGoogle} disabled={enviando} style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: 9, padding: 10, border: "1px solid #CFC8AC", borderRadius: 7, background: "#fff", color: "#23271F", cursor: "pointer", font: "600 13px IBM Plex Sans, sans-serif" }}><b style={{ color: "#4285F4", fontSize: 17 }}>G</b> Continuar con Google</button>
       <button type="button" onClick={() => { setModo((m) => m === "entrar" ? "registro" : "entrar"); setMensaje(""); setError(""); }} style={{ width: "100%", marginTop: 14, border: 0, background: "transparent", color: "#2C5C8A", cursor: "pointer", font: "inherit", fontSize: 13 }}>
         {modo === "entrar" ? "¿No tenés cuenta? Crear una" : "¿Ya tenés cuenta? Iniciar sesión"}
       </button>
