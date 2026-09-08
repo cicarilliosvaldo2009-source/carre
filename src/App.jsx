@@ -1155,7 +1155,6 @@ function BusquedaGlobal({ materias, onAbrir, onClose }) {
       <div className="busqueda-resultados">
         {!termino.trim() ? <p className="muted">Buscá por título o contenido. Incluye materias, resúmenes, notas, tareas, exámenes y recursos.</p> : resultados.length === 0 ? <p className="muted">No encontramos resultados para “{termino}”.</p> : resultados.map((r) => <button key={r.id} className="busqueda-resultado" onClick={() => onAbrir(r.materia.id, r.tab)}><span className="busqueda-tipo">{CATEGORIAS_BUSQUEDA.find((c) => c.id === r.tipo)?.label.slice(0, -1) || "Materia"}</span><span><strong>{r.titulo}</strong><small>{r.detalle}</small></span><ChevronRight size={16} /></button>)}
       </div>
-      <footer><span>⌘/Ctrl + B</span><span>{resultados.length ? `${resultados.length} resultados` : ""}</span></footer>
     </div>
   </div>;
 }
@@ -1179,7 +1178,7 @@ function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema, onBu
         <span>Cursada</span>
       </div>
       <div className="sidebar-nav">
-        <button className="sidebar-item sidebar-buscar" onClick={onBuscar} title="Buscar en todo (Ctrl+B)"><Search size={18} /><span>Buscar <kbd>Ctrl B</kbd></span></button>
+        <button className="sidebar-item sidebar-buscar" onClick={onBuscar} title="Buscar en todo"><Search size={18} /><span>Buscar</span></button>
         {items.map((it) => (
           <button
             key={it.id}
@@ -1946,6 +1945,22 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
 
   const asistencia = materia.asistencia || { faltas: 0, inicioCursada: "", finCursada: "" };
   const examenes = materia.examenes || [];
+  // El orden de la cursada se mantiene predecible. Los trabajos prácticos
+  // quedan entre los parciales y conservan entre sí el orden en que fueron
+  // cargados (el orden original del array es estable).
+  const examenesOrdenados = examenes
+    .map((e, indice) => ({ e, indice }))
+    .sort((a, b) => {
+      const prioridad = (x) => {
+        if (x.tipo === "Parcial" && x.titulo === "Primer parcial") return 0;
+        if (x.tipo === "Trabajo práctico") return 1;
+        if (x.tipo === "Parcial" && x.titulo === "Segundo parcial") return 2;
+        if (x.tipo === "Final") return 3;
+        return 4;
+      };
+      return prioridad(a.e) - prioridad(b.e) || a.indice - b.indice;
+    })
+    .map(({ e }) => e);
   const tareas = materia.tareas || [];
   const tareasCompletadasCount = tareas.filter((t) => t.completada).length;
   const tareasPendientesCount = tareas.length - tareasCompletadasCount;
@@ -2711,7 +2726,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
               <strong>{promedio !== null ? promedio.toFixed(2) : "—"}</strong>
             </div>
             <ul className="lista-examenes">
-              {examenes.map((e) => (
+              {examenesOrdenados.map((e) => (
                 <li key={e.id}>
                   <span className="chip-tipo" style={{ "--tc": TIPO_EXAMEN_COLOR[e.tipo] }}>{e.tipo}</span>
                   <span className="lista-examenes-titulo">{e.titulo}</span>
@@ -4812,7 +4827,6 @@ export default function App() {
         .sidebar-item:hover { background: rgba(237,233,216,0.08); color: #F6F3E7; }
         .sidebar-item-active { background: rgba(237,233,216,0.14); color: #FDFBF2; font-weight: 600; }
         .sidebar-buscar { background: rgba(237,233,216,0.08); margin-bottom: 5px; }
-        .sidebar-buscar kbd { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #B9B49C; }
         .sidebar-carne { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--forest-dark); border-radius: 10px; }
         .ring { width: 40px; height: 40px; flex-shrink: 0; }
         .sidebar-carne-text { display: flex; flex-direction: column; line-height: 1.25; }
@@ -4845,7 +4859,6 @@ export default function App() {
         .busqueda-resultado:hover { background: var(--paper-2); }
         .busqueda-resultado strong, .busqueda-resultado small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .busqueda-resultado strong { font-size: 13px; }.busqueda-resultado small { margin-top: 3px; color: var(--ink-soft); font-size: 11.5px; }.busqueda-tipo { color: var(--ochre); font: 700 9.5px 'IBM Plex Mono', monospace; text-transform: uppercase; }
-        .busqueda-global footer { display: flex; justify-content: space-between; border-top: 1px solid var(--line); color: var(--ink-soft); padding: 9px 16px; font-size: 10.5px; }
         .notificacion-permitida { display: flex; align-items: center; gap: 7px; color: var(--forest); font-size: 13px; font-weight: 600; padding: 8px 0; }
         .notificaciones-opciones { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); margin: 16px 0; }
         .notificacion-opcion { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; font-size: 13.5px; }.notificacion-opcion input { width: 17px; height: 17px; accent-color: var(--forest); }
