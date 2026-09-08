@@ -1135,8 +1135,7 @@ function hsvToHex(h, s, v) {
   return `#${[r, g, b].map((n) => Math.round((n + m) * 255).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
-function ColorPicker({ value, onChange, descripcionDegradado = "Elegí el color principal para identificar la materia de forma consistente en el calendario." }) {
-  const [tab, setTab] = useState("solido");
+function ColorPicker({ value, onChange }) {
   const pickerRef = useRef(null);
   const { h, s, v } = hexToHsv(value);
   const setHsv = (nextH = h, nextS = s, nextV = v) => onChange(hsvToHex(nextH, nextS, nextV));
@@ -1157,16 +1156,8 @@ function ColorPicker({ value, onChange, descripcionDegradado = "Elegí el color 
 
   return (
     <div className="color-picker" aria-label="Selector de color">
-      <div className="color-picker-tabs" role="tablist" aria-label="Tipo de color">
-        <button type="button" role="tab" aria-selected={tab === "solido"} className={tab === "solido" ? "color-picker-tab-active" : ""} onClick={() => setTab("solido")}>Color sólido</button>
-        <button type="button" role="tab" aria-selected={tab === "degradado"} className={tab === "degradado" ? "color-picker-tab-active" : ""} onClick={() => setTab("degradado")}>Degradado</button>
-      </div>
-      {tab === "solido" ? (
-        <>
-          <div ref={pickerRef} className="color-spectrum" style={{ "--hue": `hsl(${h} 100% 50%)`, "--x": `${s * 100}%`, "--y": `${(1 - v) * 100}%` }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickSV(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickSV(event); }}><span className="color-spectrum-thumb" /></div>
-          <div className="color-hue" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickHue(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickHue(event); }}><span style={{ left: `${(h / 360) * 100}%` }} /></div>
-        </>
-      ) : <div className="color-gradient-preview" style={{ background: `linear-gradient(135deg, ${value}, hsl(${(h + 72) % 360} 78% 58%))` }}><p>{descripcionDegradado}</p></div>}
+      <div ref={pickerRef} className="color-spectrum" style={{ "--hue": `hsl(${h} 100% 50%)`, "--x": `${s * 100}%`, "--y": `${(1 - v) * 100}%` }} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickSV(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickSV(event); }}><span className="color-spectrum-thumb" /></div>
+      <div className="color-hue" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); pickHue(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) pickHue(event); }}><span style={{ left: `${(h / 360) * 100}%` }} /></div>
       <div className="color-picker-footer">
         <span className="color-current" style={{ background: value }} aria-hidden="true" />
         <input className="color-hex-input" value={value} onChange={(event) => updateHex(event.target.value)} aria-label="Código hexadecimal" spellCheck="false" maxLength="7" />
