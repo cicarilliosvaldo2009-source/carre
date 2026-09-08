@@ -4699,7 +4699,7 @@ function FocusView({ materias, sesiones, agregarSesion, abrirMateria }) {
    APP
    ========================================================================= */
 
-function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones, user, onSignOut }) {
+function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones, user, onSignOut, onDeleteData }) {
   const [permiso, setPermiso] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
   const activar = async () => {
     if (!("Notification" in window)) return;
@@ -4717,6 +4717,10 @@ function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistencia
     {user && <section className="panel configuracion-seccion">
       <div><h2>Cuenta</h2><p className="muted">Sesión iniciada como {user.email}.</p></div>
       <button className="btn-secundario" onClick={onSignOut}><LogOut size={16} /> Cerrar sesión</button>
+    </section>}
+    {user && <section className="panel configuracion-seccion">
+      <div><h2>Borrar datos del planificador</h2><p className="muted">Elimina materias, tareas, sesiones y preferencias de esta cuenta. No elimina tu cuenta ni eventos de Google Calendar.</p></div>
+      <button className="btn-peligro" onClick={onDeleteData}><Trash2 size={16} /> Borrar todos mis datos</button>
     </section>}
     <section className="panel configuracion-seccion">
       <div><h2>Asistencia</h2><p className="muted">Porcentaje mínimo para no quedar libre por faltas.</p></div>
@@ -4861,6 +4865,20 @@ function PlanificadorApp({ user, onSignOut }) {
     setMaterias(seedData().materias);
     setMateriaAbiertaId(null);
     setConfirmarReset(false);
+  };
+
+  const borrarDatosCuenta = async () => {
+    if (!supabase || !user) return;
+    const confirmado = window.confirm("¿Borrar todos los datos del planificador de esta cuenta? Esta acción no se puede deshacer.");
+    if (!confirmado) return;
+    const { error } = await supabase.from("app_state").delete().eq("user_id", user.id);
+    if (error) {
+      window.alert("No se pudieron borrar los datos: " + error.message);
+      return;
+    }
+    [STORAGE_KEY, CALENDAR_KEY, GOOGLE_CLIENT_KEY, SESIONES_KEY, NOTIFICACIONES_KEY, CONFIGURACION_KEY, `${NOTIFICACIONES_KEY}-enviados`]
+      .forEach((key) => window.localStorage.removeItem(key));
+    window.location.reload();
   };
 
   return (
@@ -5617,7 +5635,7 @@ function PlanificadorApp({ user, onSignOut }) {
                 onVincularExamenDesdeEvento={vincularExamenDesdeEvento}
               />
             </div>
-            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} user={user} onSignOut={onSignOut} />}
+            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} user={user} onSignOut={onSignOut} onDeleteData={borrarDatosCuenta} />}
           </>
         )}
       </div>
