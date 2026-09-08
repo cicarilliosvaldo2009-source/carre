@@ -2364,6 +2364,15 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
               </div>
 
               <div className="columna-derecha">
+                {ultimaNota && (
+                  <section className="panel">
+                    <h2>Última nota</h2>
+                    <p className="nota-entrada-texto materia-inicio-nota">{ultimaNota.texto}</p>
+                    <span className="nota-entrada-fecha">{fmtFechaHoraNota(ultimaNota.fecha)}</span>
+                    <div><button className="link-btn" onClick={() => setTab("info")}>Ver todas las notas →</button></div>
+                  </section>
+                )}
+
                 {(correlativasPendientesMateria.length > 0 || materiasQueHabilita.length > 0) && (
                   <section className="panel">
                     <h2>Correlativas</h2>
@@ -2398,14 +2407,6 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                   </section>
                 )}
 
-                {ultimaNota && (
-                  <section className="panel">
-                    <h2>Última nota</h2>
-                    <p className="nota-entrada-texto materia-inicio-nota">{ultimaNota.texto}</p>
-                    <span className="nota-entrada-fecha">{fmtFechaHoraNota(ultimaNota.fecha)}</span>
-                    <div><button className="link-btn" onClick={() => setTab("info")}>Ver todas las notas →</button></div>
-                  </section>
-                )}
               </div>
             </div>
           </div>
@@ -5402,7 +5403,7 @@ export default function App() {
              campo continúa desplazando toda la pantalla de forma fiable con
              dedo o trackpad en Safari/Chrome. */
           html, body, #root { min-height: 100%; }
-          body { margin: 0; overflow-x: hidden; }
+          body { margin: 0; overflow-x: hidden; overflow-y: auto; }
           .app-shell { flex-direction: column; height: auto; min-height: 100dvh; overflow: visible; }
           .main-area { display: block; flex: 0 0 auto; min-height: auto; }
           .view, .calendario-persistente, .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
@@ -5464,8 +5465,8 @@ export default function App() {
         .app-shell-tablet .modal-overlay { align-items: center; overflow: hidden; padding: 20px; }
         .app-shell-tablet .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
         .app-shell-tablet .modal-wide { width: 620px; }
-        .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
-        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100dvh; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
+        .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: flex-start; overflow-y: auto; overflow-x: hidden; padding: 0; -webkit-overflow-scrolling: touch; }
+        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; min-height: 100dvh; height: auto; overflow: visible; }
         /* Las siete secciones caben sin desplazamiento horizontal: cuatro
            pestañas por fila en lugar de una única fila demasiado larga. */
         .app-shell-tablet .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
@@ -5487,7 +5488,8 @@ export default function App() {
           .sidebar-item span { display: none; }
           .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
           .sidebar-tema svg { width: 16px; height: 16px; }
-          .detalle-panel { height: 100dvh; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; touch-action: pan-y; }
+          .detalle-overlay { align-items: flex-start; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+          .detalle-panel { min-height: 100dvh; height: auto; overflow: visible; }
           .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
           .tab { min-width: 0; padding: 9px 5px; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
         }
