@@ -974,18 +974,18 @@ function IconBtn({ icon: Icon, onClick, title, danger, size = 16 }) {
    colores, en CSS puro (sin librerías externas). Se desmonta solo. */
 function Confetti({ onDone }) {
   useEffect(() => {
-    const t = setTimeout(() => onDone && onDone(), 1500);
+    const t = setTimeout(() => onDone && onDone(), 2100);
     return () => clearTimeout(t);
   }, [onDone]);
 
   const piezas = useMemo(() => {
-    return Array.from({ length: 30 }, (_, i) => ({
+    return Array.from({ length: 78 }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
-      delay: Math.random() * 0.3,
-      duration: 1 + Math.random() * 0.6,
+      delay: Math.random() * 0.48,
+      duration: 1.15 + Math.random() * 0.8,
       rot: Math.round(Math.random() * 360),
-      drift: Math.round((Math.random() - 0.5) * 140),
+      drift: Math.round((Math.random() - 0.5) * 190),
       color: COLORES[i % COLORES.length].hex,
       w: 6 + Math.random() * 5,
       h: 9 + Math.random() * 6,
@@ -1150,11 +1150,10 @@ function BusquedaGlobal({ materias, onAbrir, onClose }) {
   }, [onClose]);
   return <div className="busqueda-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="busqueda-global" role="dialog" aria-modal="true" aria-label="Búsqueda global">
-      <div className="busqueda-global-input"><Search size={20} /><input ref={inputRef} value={termino} onChange={(e) => setTermino(e.target.value)} placeholder="Buscar en todas las materias…" /><kbd>Esc</kbd></div>
-      <div className="busqueda-categorias">{CATEGORIAS_BUSQUEDA.map((c) => <button key={c.id} onClick={() => setCategoria(c.id)} className={categoria === c.id ? "busqueda-categoria-activa" : ""}>{c.label}</button>)}</div>
-      <div className="busqueda-resultados">
-        {!termino.trim() ? <p className="muted">Buscá por título o contenido. Incluye materias, resúmenes, notas, tareas, exámenes y recursos.</p> : resultados.length === 0 ? <p className="muted">No encontramos resultados para “{termino}”.</p> : resultados.map((r) => <button key={r.id} className="busqueda-resultado" onClick={() => onAbrir(r.materia.id, r.tab)}><span className="busqueda-tipo">{CATEGORIAS_BUSQUEDA.find((c) => c.id === r.tipo)?.label.slice(0, -1) || "Materia"}</span><span><strong>{r.titulo}</strong><small>{r.detalle}</small></span><ChevronRight size={16} /></button>)}
-      </div>
+      <div className="busqueda-global-input"><Search size={20} /><input ref={inputRef} value={termino} onChange={(e) => setTermino(e.target.value)} placeholder="Buscar en todas las materias…" /><span className="busqueda-selector"><select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Categoría de búsqueda">{CATEGORIAS_BUSQUEDA.map((c) => <option key={c.id} value={c.id}>{c.id === "todo" ? "Todo" : `en ${c.label.toLowerCase()}`}</option>)}</select><ChevronDown size={15} /></span><kbd>Esc</kbd></div>
+      {termino.trim() && <div className="busqueda-resultados">
+        {resultados.length === 0 ? <p className="muted">No encontramos resultados para “{termino}”.</p> : resultados.map((r) => <button key={r.id} className="busqueda-resultado" onClick={() => onAbrir(r.materia.id, r.tab)}><span className="busqueda-tipo">{CATEGORIAS_BUSQUEDA.find((c) => c.id === r.tipo)?.label.slice(0, -1) || "Materia"}</span><span><strong>{r.titulo}</strong><small>{r.detalle}</small></span><ChevronRight size={16} /></button>)}
+      </div>}
     </div>
   </div>;
 }
@@ -4919,15 +4918,14 @@ export default function App() {
         .view { flex: 1; min-width: 0; min-height: 0; padding: 32px 36px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .view-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
 
-        .busqueda-overlay { position: fixed; z-index: 200; inset: 0; padding: 12vh 20px 20px; background: rgba(24, 27, 20, 0.52); display: flex; justify-content: center; animation: overlayFadeIn .15s ease-out; }
-        .busqueda-global { width: min(720px, 100%); max-height: min(660px, 76vh); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.3); overflow: hidden; animation: modalPopIn .18s ease-out; }
-        .busqueda-global-input { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
-        .busqueda-global-input input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 17px; }
+        .busqueda-overlay { position: fixed; z-index: 200; inset: 0; padding: 7vh 20px 20px; background: rgba(24, 27, 20, 0.28); display: flex; justify-content: center; align-items: flex-start; animation: overlayFadeIn .15s ease-out; }
+        .busqueda-global { width: min(720px, 100%); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.24); overflow: hidden; animation: modalPopIn .18s ease-out; }
+        .busqueda-global-input { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: var(--ink-soft); }
+        .busqueda-global-input input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; }
         .busqueda-global kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: 10px 'IBM Plex Mono', monospace; color: var(--ink-soft); }
-        .busqueda-categorias { display: flex; gap: 6px; padding: 11px 16px; overflow-x: auto; border-bottom: 1px solid var(--line-soft); }
-        .busqueda-categorias button { flex: 0 0 auto; border: 1px solid var(--line); background: transparent; border-radius: 16px; padding: 5px 10px; color: var(--ink-soft); font: 600 11px inherit; cursor: pointer; }
-        .busqueda-categorias .busqueda-categoria-activa { background: var(--forest); border-color: var(--forest); color: #F6F3E7; }
-        .busqueda-resultados { min-height: 160px; overflow-y: auto; padding: 8px; }
+        .busqueda-selector { position: relative; display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid var(--line); padding-left: 12px; }
+        .busqueda-selector select { appearance: none; -webkit-appearance: none; border: 0; outline: 0; background: transparent; color: var(--ink-soft); padding: 4px 22px 4px 0; font: 13px inherit; cursor: pointer; }.busqueda-selector svg { position: absolute; right: 3px; pointer-events: none; }
+        .busqueda-resultados { max-height: min(480px, 62vh); overflow-y: auto; padding: 7px; border-top: 1px solid var(--line); }
         .busqueda-resultados > .muted { padding: 20px 12px; line-height: 1.5; }
         .busqueda-resultado { width: 100%; display: grid; grid-template-columns: 78px minmax(0,1fr) 18px; align-items: center; gap: 10px; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 10px; color: var(--ink); cursor: pointer; font-family: inherit; }
         .busqueda-resultado:hover { background: var(--paper-2); }
