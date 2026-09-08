@@ -2289,7 +2289,6 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
           <div className="tab-panel">
             <section className="panel progreso-general">
               <div><span className="muted">Progreso de tareas</span><strong>{progresoTareasPct}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoTareasPct}%` }} /></div><small>{tareasCompletadasCount} de {tareas.length || 0} completadas</small></div>
-              <div><span className="muted">Cursada</span><strong>{progresoCursadaPct !== null ? `${Math.round(progresoCursadaPct)}%` : "—"}</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoCursadaPct || 0}%` }} /></div><small>{progresoCursadaPct !== null ? "del período de cursada" : "Sin período cargado"}</small></div>
               <div><span className="muted">Material propio</span><strong>{materia.resumenes.length + notas.length}</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${Math.min(100, (materia.resumenes.length + notas.length) * 20)}%` }} /></div><small>resúmenes y notas</small></div>
             </section>
             <div className="dos-columnas materia-inicio-layout">
