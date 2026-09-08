@@ -939,8 +939,8 @@ async function apiEliminarEvento(accessToken, calendarId, eventId) {
    PIEZAS CHICAS DE UI
    ========================================================================= */
 
-// Ícono de tomate hecho a mano (lucide-react no trae uno), con el mismo
-// estilo de trazo que el resto de los íconos de la app.
+// Tomate con silueta más orgánica, hojas definidas y un pequeño detalle de
+// reloj: conserva el trazo editorial del resto de la interfaz.
 function IconTomate({ size = 16, className = "" }) {
   return (
     <svg
@@ -948,10 +948,10 @@ function IconTomate({ size = 16, className = "" }) {
       stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
       className={className}
     >
-      <path d="M12 5.5V3" />
-      <path d="M8.7 4.3c.7.6 1.2 1.4 1.4 2.4" />
-      <path d="M15.3 4.3c-.7.6-1.2 1.4-1.4 2.4" />
-      <circle cx="12" cy="14.5" r="7.5" />
+      <path fill="currentColor" fillOpacity="0.12" d="M12 7.2c-1.6-1.55-4.75-1.34-6.42.72-2.32 2.85-1.83 8.1.65 10.77 2.86 3.08 8.68 3.08 11.54 0 2.48-2.67 2.97-7.92.65-10.77C16.75 5.86 13.6 5.65 12 7.2Z" />
+      <path d="M12 7.2c-1.6-1.55-4.75-1.34-6.42.72-2.32 2.85-1.83 8.1.65 10.77 2.86 3.08 8.68 3.08 11.54 0 2.48-2.67 2.97-7.92.65-10.77C16.75 5.86 13.6 5.65 12 7.2Z" />
+      <path d="M12 7.2V3.1M12 5.3 8.4 3.8l1.35 3.35M12 5.3l3.6-1.5-1.35 3.35" />
+      <path d="M9.6 13.2v2.15l1.55.9M14.4 13.2v2.15l-1.55.9" strokeWidth="1.55" />
     </svg>
   );
 }
