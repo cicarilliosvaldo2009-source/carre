@@ -803,10 +803,9 @@ function useGoogleClientId() {
   return { clientId, setClientId, cargado };
 }
 
-/* Adaptador de autenticación con Google Identity Services (OAuth por popup,
-   sin backend). Solo puede completarse en una página publicada de verdad
-   (con su origen registrado en Google Cloud) — no dentro del sandbox de
-   artifacts de Claude. El token vive solo en memoria, nunca se guarda. */
+/* Adaptador de autenticación con Google Identity Services. El token no se
+   guarda: al volver a abrir la app se intenta obtener uno nuevo en silencio
+   usando el consentimiento ya concedido al mismo navegador. */
 function useGoogleAuth(clientId) {
   const [accessToken, setAccessToken] = useState(null);
   const [conectando, setConectando] = useState(false);
@@ -815,6 +814,8 @@ function useGoogleAuth(clientId) {
     typeof window !== "undefined" && !!window.google?.accounts?.oauth2
   );
   const tokenClientRef = useRef(null);
+  const intentoSilenciosoRef = useRef(false);
+  const solicitudManualRef = useRef(false);
 
   useEffect(() => {
     if (scriptListo || typeof window === "undefined") return;
@@ -841,13 +842,25 @@ function useGoogleAuth(clientId) {
       callback: (resp) => {
         setConectando(false);
         if (resp.error) {
-          setErrorAuth("No se pudo conectar con Google (" + resp.error + ").");
+          // Un intento silencioso puede fallar si la sesión de Google expiró;
+          // en ese caso mostramos el botón de conexión sin un error alarmante.
+          if (solicitudManualRef.current) setErrorAuth("No se pudo conectar con Google (" + resp.error + ").");
+          solicitudManualRef.current = false;
           return;
         }
         setAccessToken(resp.access_token);
         setErrorAuth("");
+        solicitudManualRef.current = false;
       },
     });
+  }, [scriptListo, clientId]);
+
+  useEffect(() => {
+    if (!tokenClientRef.current || intentoSilenciosoRef.current) return;
+    intentoSilenciosoRef.current = true;
+    // No abre selector de cuenta ni pantalla de permisos. Si Google todavía
+    // reconoce al usuario y ya otorgó acceso, devuelve un token automáticamente.
+    tokenClientRef.current.requestAccessToken({ prompt: "none" });
   }, [scriptListo, clientId]);
 
   const conectar = () => {
@@ -857,6 +870,7 @@ function useGoogleAuth(clientId) {
     }
     setConectando(true);
     setErrorAuth("");
+    solicitudManualRef.current = true;
     tokenClientRef.current.requestAccessToken({ prompt: "" });
   };
 
@@ -4699,7 +4713,7 @@ function FocusView({ materias, sesiones, agregarSesion, abrirMateria }) {
    APP
    ========================================================================= */
 
-function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones, user, onSignOut, onDeleteData }) {
+function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones, user, onSignOut }) {
   const [permiso, setPermiso] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
   const activar = async () => {
     if (!("Notification" in window)) return;
@@ -4717,10 +4731,6 @@ function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistencia
     {user && <section className="panel configuracion-seccion">
       <div><h2>Cuenta</h2><p className="muted">Sesión iniciada como {user.email}.</p></div>
       <button className="btn-secundario" onClick={onSignOut}><LogOut size={16} /> Cerrar sesión</button>
-    </section>}
-    {user && <section className="panel configuracion-seccion">
-      <div><h2>Borrar datos del planificador</h2><p className="muted">Elimina materias, tareas, sesiones y preferencias de esta cuenta. No elimina tu cuenta ni eventos de Google Calendar.</p></div>
-      <button className="btn-peligro" onClick={onDeleteData}><Trash2 size={16} /> Borrar todos mis datos</button>
     </section>}
     <section className="panel configuracion-seccion">
       <div><h2>Asistencia</h2><p className="muted">Porcentaje mínimo para no quedar libre por faltas.</p></div>
@@ -4865,20 +4875,6 @@ function PlanificadorApp({ user, onSignOut }) {
     setMaterias(seedData().materias);
     setMateriaAbiertaId(null);
     setConfirmarReset(false);
-  };
-
-  const borrarDatosCuenta = async () => {
-    if (!supabase || !user) return;
-    const confirmado = window.confirm("¿Borrar todos los datos del planificador de esta cuenta? Esta acción no se puede deshacer.");
-    if (!confirmado) return;
-    const { error } = await supabase.from("app_state").delete().eq("user_id", user.id);
-    if (error) {
-      window.alert("No se pudieron borrar los datos: " + error.message);
-      return;
-    }
-    [STORAGE_KEY, CALENDAR_KEY, GOOGLE_CLIENT_KEY, SESIONES_KEY, NOTIFICACIONES_KEY, CONFIGURACION_KEY, `${NOTIFICACIONES_KEY}-enviados`]
-      .forEach((key) => window.localStorage.removeItem(key));
-    window.location.reload();
   };
 
   return (
@@ -5635,7 +5631,7 @@ function PlanificadorApp({ user, onSignOut }) {
                 onVincularExamenDesdeEvento={vincularExamenDesdeEvento}
               />
             </div>
-            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} user={user} onSignOut={onSignOut} onDeleteData={borrarDatosCuenta} />}
+            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} user={user} onSignOut={onSignOut} />}
           </>
         )}
       </div>
