@@ -555,7 +555,7 @@ function seedData() {
     promocionada: d.promocionada || false,
     asistencia: d.asistencia || { faltas: 0, inicioCursada: "", finCursada: "" },
     examenes: (d.examenes || []).map((e) => ({ id: uid(), fecha: "", ...e })),
-    tareas: (d.tareas || []).map((t) => ({ id: uid(), completada: false, subtareas: [], recurrencia: null, vecesCompletada: 0, ...t })),
+    tareas: (d.tareas || []).map((t) => ({ id: uid(), completada: false, subtareas: [], recurrencia: null, vecesCompletada: 0, prioridad: "Media", etiquetas: [], archivo: "", archivoNombre: "", archivoTipo: "", ...t })),
   }));
 
   // Ahora que todas las materias tienen su id definitivo, convertimos los
@@ -673,7 +673,7 @@ function useStore() {
     (async () => {
       const datos = await cargarValor(STORAGE_KEY);
       if (datos) {
-        const base = (datos.materias || []).map((m) => ({ ...m, notas: normalizarNotasEntradas(m.notas) }));
+        const base = (datos.materias || []).map((m) => ({ ...m, notas: normalizarNotasEntradas(m.notas), tareas: (m.tareas || []).map((t) => ({ prioridad: "Media", etiquetas: [], archivo: "", archivoNombre: "", archivoTipo: "", ...t })) }));
         setMaterias(base.map((m) => ({ ...m, correlativas: normalizarCorrelativas(m.correlativas, base) })));
       } else {
         const seed = seedData();
@@ -1223,6 +1223,20 @@ function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema, onBu
    INICIO
    ========================================================================= */
 
+function PlanDeEstudio({ materias, abrirMateria }) {
+  const sugerencias = useMemo(() => materias.map((m) => {
+    const tareas = (m.tareas || []).filter((t) => !t.completada);
+    const examenes = (m.examenes || []).filter((e) => e.fecha && diffDias(e.fecha) >= 0);
+    const proximo = [...tareas, ...examenes].filter((x) => x.fecha).sort((a, b) => a.fecha.localeCompare(b.fecha))[0];
+    const urgencia = proximo ? Math.max(0, 8 - Math.min(8, diffDias(proximo.fecha))) : 0;
+    const alta = tareas.filter((t) => t.prioridad === "Alta").length;
+    const score = urgencia * 2 + alta * 3 + tareas.length;
+    return { materia: m, proximo, minutos: score >= 12 ? 90 : score >= 6 ? 60 : 30, score };
+  }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 3), [materias]);
+  if (!sugerencias.length) return null;
+  return <section className="panel plan-estudio"><div className="panel-pendientes-head"><h2>Plan de estudio sugerido</h2><span className="panel-pendientes-contador">Hoy</span></div><p className="muted">Priorizado por fecha, tareas pendientes y prioridad.</p><div className="plan-estudio-lista">{sugerencias.map((s) => <button key={s.materia.id} onClick={() => abrirMateria(s.materia.id, s.proximo?.tipo ? "examenes" : "tareas")}><span style={{ background: s.materia.color }} /><div><strong>{s.materia.nombre}</strong><small>{s.proximo ? `${s.proximo.titulo} · ${textoUrgencia(s.proximo.fecha)}` : "Repaso y avance"}</small></div><b>{s.minutos} min</b></button>)}</div></section>;
+}
+
 function Inicio({ materias, setView, abrirMateria, onCompletarTarea }) {
   const MAX_PENDIENTES_VISIBLE = 5;
   const [pendientesExpandido, setPendientesExpandido] = useState(false);
@@ -1285,6 +1299,7 @@ function Inicio({ materias, setView, abrirMateria, onCompletarTarea }) {
 
       <div className="dos-columnas">
         <div className="columna-izquierda">
+          <PlanDeEstudio materias={materias} abrirMateria={abrirMateria} />
           {pendientesOrdenadas.length > 0 && (
             <section className="panel panel-pendientes-grande">
               <div className="panel-pendientes-head">
@@ -1928,9 +1943,11 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
   const [resumenActivo, setResumenActivo] = useState(materia.resumenes[0]?.id || null);
   const [nuevoRecurso, setNuevoRecurso] = useState({ tipo: "Apunte", nombre: "", url: "", archivo: "", archivoNombre: "", archivoTipo: "" });
   const [errorArchivo, setErrorArchivo] = useState("");
-  const [nuevoExamen, setNuevoExamen] = useState({ tipo: "Trabajo práctico", titulo: "", nota: "", fecha: "", recuperaDe: "" });
+  const [nuevoExamen, setNuevoExamen] = useState({ tipo: "Trabajo práctico", titulo: "", nota: "", fecha: "", recuperaDe: "", modalidad: "", aula: "", enlace: "", temario: "" });
   const [modoEdicionExamenes, setModoEdicionExamenes] = useState(false);
-  const [nuevaTarea, setNuevaTarea] = useState({ titulo: "", descripcion: "", fecha: "", recurrencia: "" });
+  const [nuevaTarea, setNuevaTarea] = useState({ titulo: "", descripcion: "", fecha: "", recurrencia: "", prioridad: "Media", etiquetas: "", archivo: "", archivoNombre: "", archivoTipo: "" });
+  const [vistaTareas, setVistaTareas] = useState("Todas");
+  const tareaArchivoRef = useRef(null);
   const [tareasExpandidas, setTareasExpandidas] = useState(new Set());
   const [subtareaTexto, setSubtareaTexto] = useState({});
   const [tareaAEliminar, setTareaAEliminar] = useState(null);
@@ -1964,6 +1981,13 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
   const tareas = materia.tareas || [];
   const tareasCompletadasCount = tareas.filter((t) => t.completada).length;
   const tareasPendientesCount = tareas.length - tareasCompletadasCount;
+  const tareasVisibles = tareas.filter((t) => {
+    if (mostrarCompletadas ? false : t.completada) return false;
+    if (vistaTareas === "Hoy") return t.fecha === toDateStr(new Date());
+    if (vistaTareas === "Esta semana") return t.fecha && diffDias(t.fecha) >= 0 && diffDias(t.fecha) <= 7;
+    if (vistaTareas === "Vencidas") return t.fecha && diffDias(t.fecha) < 0;
+    return true;
+  });
   const notas = materia.notas || [];
   const promedio = calcularPromedio(examenes);
   const totalClases = contarClasesEnRango(materia.horarios, asistencia.inicioCursada, asistencia.finCursada);
@@ -1990,6 +2014,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
   );
   const proximaClase = proximaClaseDeMateria(materia.horarios);
   const progresoCursadaPct = progresoCursada(asistencia.inicioCursada, asistencia.finCursada);
+  const progresoTareasPct = tareas.length ? Math.round((tareasCompletadasCount / tareas.length) * 100) : 0;
   const ultimaNota = notas.length > 0 ? notas.slice().sort((a, b) => (a.fecha < b.fecha ? 1 : -1))[0] : null;
 
   const patch = (fields) => onUpdate({ ...materia, ...fields });
@@ -2044,9 +2069,9 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
   const addExamen = () => {
     const titulo = tituloAutomaticoExamen(nuevoExamen, examenes);
     if (!titulo.trim()) return;
-    const nuevo = { id: uid(), tipo: nuevoExamen.tipo, titulo, nota: nuevoExamen.nota === "" ? null : Number(nuevoExamen.nota), fecha: nuevoExamen.fecha };
+    const nuevo = { id: uid(), tipo: nuevoExamen.tipo, titulo, nota: nuevoExamen.nota === "" ? null : Number(nuevoExamen.nota), fecha: nuevoExamen.fecha, modalidad: nuevoExamen.modalidad, aula: nuevoExamen.aula, enlace: nuevoExamen.enlace, temario: nuevoExamen.temario };
     patch({ examenes: [...examenes, nuevo] });
-    setNuevoExamen({ tipo: "Trabajo práctico", titulo: "", nota: "", fecha: "", recuperaDe: "" });
+    setNuevoExamen({ tipo: "Trabajo práctico", titulo: "", nota: "", fecha: "", recuperaDe: "", modalidad: "", aula: "", enlace: "", temario: "" });
     setExamenModalAbierto(false);
     sincronizarExamenConCalendario(nuevo, null);
   };
@@ -2080,6 +2105,11 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
           id: uid(),
           titulo: nuevaTarea.titulo,
           descripcion: nuevaTarea.descripcion,
+          prioridad: nuevaTarea.prioridad,
+          etiquetas: nuevaTarea.etiquetas.split(",").map((x) => x.trim()).filter(Boolean),
+          archivo: nuevaTarea.archivo,
+          archivoNombre: nuevaTarea.archivoNombre,
+          archivoTipo: nuevaTarea.archivoTipo,
           fecha: fechaFinal,
           completada: false,
           subtareas: [],
@@ -2088,8 +2118,12 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
         },
       ],
     });
-    setNuevaTarea({ titulo: "", descripcion: "", fecha: "", recurrencia: "" });
+    setNuevaTarea({ titulo: "", descripcion: "", fecha: "", recurrencia: "", prioridad: "Media", etiquetas: "", archivo: "", archivoNombre: "", archivoTipo: "" });
     setTareaModalAbierto(false);
+  };
+  const cargarArchivoTarea = async (file) => {
+    if (!file) return;
+    try { const { dataUrl, nombre, tipo } = await leerArchivoComoDataUrl(file); setNuevaTarea((t) => ({ ...t, archivo: dataUrl, archivoNombre: nombre, archivoTipo: tipo })); } catch (e) { /* se mantiene el formulario */ }
   };
   const toggleTarea = (id) => {
     const t = tareas.find((x) => x.id === id);
@@ -2253,6 +2287,11 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
 
         {tab === "inicio" && (
           <div className="tab-panel">
+            <section className="panel progreso-general">
+              <div><span className="muted">Progreso de tareas</span><strong>{progresoTareasPct}%</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoTareasPct}%` }} /></div><small>{tareasCompletadasCount} de {tareas.length || 0} completadas</small></div>
+              <div><span className="muted">Cursada</span><strong>{progresoCursadaPct !== null ? `${Math.round(progresoCursadaPct)}%` : "—"}</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${progresoCursadaPct || 0}%` }} /></div><small>{progresoCursadaPct !== null ? "del período de cursada" : "Sin período cargado"}</small></div>
+              <div><span className="muted">Material propio</span><strong>{materia.resumenes.length + notas.length}</strong><div className="progreso-barra"><div className="progreso-barra-relleno" style={{ width: `${Math.min(100, (materia.resumenes.length + notas.length) * 20)}%` }} /></div><small>resúmenes y notas</small></div>
+            </section>
             <div className="dos-columnas materia-inicio-layout">
               <div className="columna-izquierda">
                 <section className="panel">
@@ -2465,12 +2504,16 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
 
         {tab === "tareas" && (
           <div className="tab-panel">
+            <div className="filtros filtros-tareas">
+              {["Todas", "Hoy", "Esta semana", "Vencidas"].map((v) => <button key={v} className={`filtro-chip ${vistaTareas === v ? "filtro-chip-activo" : ""}`} onClick={() => setVistaTareas(v)}>{v}</button>)}
+            </div>
             <ul className="lista-tareas">
-              {tareas
+              {tareasVisibles
                 .slice()
-                .filter((t) => mostrarCompletadas || !t.completada)
                 .sort((a, b) => {
                   if (a.completada !== b.completada) return a.completada ? 1 : -1;
+                  const prioridad = { Alta: 0, Media: 1, Baja: 2 };
+                  if (prioridad[a.prioridad] !== prioridad[b.prioridad]) return (prioridad[a.prioridad] ?? 1) - (prioridad[b.prioridad] ?? 1);
                   if (!a.fecha && !b.fecha) return 0;
                   if (!a.fecha) return 1;
                   if (!b.fecha) return -1;
@@ -2493,6 +2536,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                         <div className="tarea-texto">
                           <div className="tarea-titulo-fila">
                             <strong>{t.titulo}</strong>
+                            <span className={`tarea-prioridad tarea-prioridad-${(t.prioridad || "Media").toLowerCase()}`}>{t.prioridad || "Media"}</span>
                             {subt.length > 0 && <span className="tarea-progreso">{hechas}/{subt.length}</span>}
                             {t.recurrencia && (
                               <span className="tarea-recurrente" title={`Se repite todos los ${pluralDia(t.recurrencia.diaSemana).toLowerCase()}`}>
@@ -2501,6 +2545,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                             )}
                           </div>
                           {t.descripcion && <span className="tarea-descripcion">{t.descripcion}</span>}
+                          {(t.etiquetas || []).length > 0 && <span className="tarea-etiquetas">{t.etiquetas.map((e) => <em key={e}>#{e}</em>)}</span>}
                           {t.fecha && (
                             <span className={`tarea-fecha tarea-fecha-${nivelUrgencia(t.fecha)}`}>{textoUrgencia(t.fecha)}</span>
                           )}
@@ -2510,6 +2555,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                           title={expandida ? "Ocultar subtareas" : "Subtareas"}
                           onClick={() => toggleExpandirTarea(t.id)}
                         />
+                        {t.archivo && <a className="icon-btn" href={t.archivo} download={t.archivoNombre || t.titulo} title={`Descargar ${t.archivoNombre || "adjunto"}`}><Paperclip size={15} /></a>}
                         <IconBtn icon={Trash2} title="Eliminar" danger onClick={() => pedirEliminarTarea(t)} />
                       </div>
 
@@ -2547,6 +2593,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                   );
                 })}
               {tareas.length === 0 && <p className="muted">No tenés tareas pendientes en esta materia.</p>}
+              {tareas.length > 0 && tareasVisibles.length === 0 && <p className="muted">No hay tareas en esta vista.</p>}
               {tareas.length > 0 && tareasPendientesCount === 0 && !mostrarCompletadas && (
                 <p className="muted">Completaste todas tus tareas de esta materia. 🎉</p>
               )}
@@ -2592,6 +2639,21 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                   disabled={nuevaTarea.recurrencia !== ""}
                 />
               </label>
+              <label className="campo">
+                <span>Prioridad</span>
+                <select value={nuevaTarea.prioridad} onChange={(e) => setNuevaTarea((t) => ({ ...t, prioridad: e.target.value }))}>
+                  <option>Alta</option><option>Media</option><option>Baja</option>
+                </select>
+              </label>
+              <label className="campo">
+                <span>Etiquetas</span>
+                <input value={nuevaTarea.etiquetas} onChange={(e) => setNuevaTarea((t) => ({ ...t, etiquetas: e.target.value }))} placeholder="TP, lectura" />
+              </label>
+              <div className="campo campo-full">
+                <span>Adjunto</span>
+                {nuevaTarea.archivo ? <span className="adjuntar-archivo-nombre"><Paperclip size={13} /> {nuevaTarea.archivoNombre}<button type="button" onClick={() => setNuevaTarea((t) => ({ ...t, archivo: "", archivoNombre: "", archivoTipo: "" }))}><X size={13} /></button></span> : <button type="button" className="btn-secundario btn-chico" onClick={() => tareaArchivoRef.current?.click()}><Paperclip size={14} /> Adjuntar archivo</button>}
+                <input ref={tareaArchivoRef} type="file" hidden onChange={(e) => cargarArchivoTarea(e.target.files?.[0])} />
+              </div>
               <label className="campo campo-full">
                 <span>Repetir</span>
                 <select
@@ -2725,11 +2787,12 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
               <span className="muted">Promedio de la materia</span>
               <strong>{promedio !== null ? promedio.toFixed(2) : "—"}</strong>
             </div>
+            {(() => { const conNota = examenes.filter((e) => e.nota !== null && e.nota !== undefined && e.nota !== ""); const sinNota = examenes.filter((e) => e.nota === null || e.nota === undefined || e.nota === ""); const suma = conNota.reduce((a, e) => a + Number(e.nota), 0); const necesaria = sinNota.length ? Math.max(0, 7 * (conNota.length + 1) - suma) : null; return necesaria !== null && <p className="meta-promocion">Para un promedio de <strong>7</strong>, necesitás al menos <strong>{necesaria.toFixed(1)}</strong> en la próxima instancia evaluable.</p>; })()}
             <ul className="lista-examenes">
               {examenesOrdenados.map((e) => (
                 <li key={e.id}>
                   <span className="chip-tipo" style={{ "--tc": TIPO_EXAMEN_COLOR[e.tipo] }}>{e.tipo}</span>
-                  <span className="lista-examenes-titulo">{e.titulo}</span>
+                  <span className="lista-examenes-titulo"><strong>{e.titulo}</strong>{(e.modalidad || e.aula || e.temario) && <small>{[e.modalidad, e.aula, e.temario].filter(Boolean).join(" · ")}</small>}{e.enlace && <a href={e.enlace} target="_blank" rel="noreferrer">Abrir enlace</a>}</span>
                   {modoEdicionExamenes ? (
                     <>
                       <input
@@ -2832,6 +2895,22 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
                   value={nuevoExamen.fecha}
                   onChange={(e) => setNuevoExamen((n) => ({ ...n, fecha: e.target.value }))}
                 />
+              </label>
+              <label className="campo">
+                <span>Modalidad</span>
+                <select value={nuevoExamen.modalidad} onChange={(e) => setNuevoExamen((n) => ({ ...n, modalidad: e.target.value }))}><option value="">Sin definir</option><option>Presencial</option><option>Virtual</option><option>Oral</option><option>Escrito</option></select>
+              </label>
+              <label className="campo">
+                <span>Aula o lugar</span>
+                <input value={nuevoExamen.aula} onChange={(e) => setNuevoExamen((n) => ({ ...n, aula: e.target.value }))} placeholder="Aula 101" />
+              </label>
+              <label className="campo campo-full">
+                <span>Enlace (opcional)</span>
+                <input type="url" value={nuevoExamen.enlace} onChange={(e) => setNuevoExamen((n) => ({ ...n, enlace: e.target.value }))} placeholder="https://…" />
+              </label>
+              <label className="campo campo-full">
+                <span>Temario / materiales permitidos</span>
+                <textarea rows={3} value={nuevoExamen.temario} onChange={(e) => setNuevoExamen((n) => ({ ...n, temario: e.target.value }))} placeholder="Unidades, consignas, materiales…" />
               </label>
             </div>
             <div className="modal-acciones">
@@ -3916,9 +3995,25 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
   for (let i = 0; i < offset; i++) celdas.push(null);
   for (let d = 1; d <= diasEnMes; d++) celdas.push(d);
 
+  // La agenda propia se arma desde las materias aunque Google no esté conectado:
+  // clases recurrentes, vencimientos y exámenes locales siempre son visibles.
+  const eventosLocales = useMemo(() => {
+    const eventos = [];
+    const desde = new Date(rangoInicio); const hasta = new Date(rangoFin);
+    materias.forEach((m) => {
+      (m.tareas || []).filter((t) => t.fecha && t.fecha >= toDateStr(desde) && t.fecha < toDateStr(hasta) && !t.completada).forEach((t) => eventos.push({ id: `t-${t.id}`, summary: `Tarea: ${t.titulo}`, description: m.nombre, start: { date: t.fecha }, end: { date: t.fecha }, colorId: "5" }));
+      (m.examenes || []).filter((e) => e.fecha && e.fecha >= toDateStr(desde) && e.fecha < toDateStr(hasta)).forEach((e) => eventos.push({ id: `e-${e.id}`, summary: `${e.tipo}: ${e.titulo}`, description: m.nombre, start: { date: e.fecha }, end: { date: e.fecha }, colorId: "4" }));
+      for (let d = new Date(desde); d < hasta; d.setDate(d.getDate() + 1)) {
+        const dia = DIAS[(d.getDay() + 6) % 7];
+        (m.horarios || []).filter((h) => h.dia === dia).forEach((h, i) => eventos.push({ id: `c-${m.id}-${toDateStr(d)}-${i}`, summary: m.nombre, description: m.aula || "", start: { dateTime: `${toDateStr(d)}T${h.inicio}:00` }, end: { dateTime: `${toDateStr(d)}T${h.fin}:00` }, colorId: undefined }));
+      }
+    });
+    return eventos;
+  }, [materias, rangoInicio, rangoFin]);
+  const eventosMostrados = conectadoDeVerdad ? eventosPeriodo : eventosLocales;
   const eventosPorDia = useMemo(() => {
     const map = new Map();
-    eventosPeriodo.forEach((ev) => {
+    eventosMostrados.forEach((ev) => {
       const fechaStr = ev.start?.dateTime ? toDateStr(new Date(ev.start.dateTime)) : ev.start?.date;
       if (!fechaStr) return;
       if (!map.has(fechaStr)) map.set(fechaStr, []);
@@ -3926,7 +4021,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
     });
     map.forEach((lista) => lista.sort((a, b) => (a.start?.dateTime || a.start?.date || "").localeCompare(b.start?.dateTime || b.start?.date || "")));
     return map;
-  }, [eventosPeriodo]);
+  }, [eventosMostrados]);
 
   const eventosDelDiaSel = (diaSel ? (eventosPorDia.get(diaSel) || []) : [])
     .slice()
@@ -4020,7 +4115,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
         </div>
       )}
 
-      {!calendarId ? (
+      {false ? (
         <div className="panel calendario-vacio">
           <CalendarIcon size={28} strokeWidth={1.5} />
           <h2>Todavía no conectaste tu Google Calendar</h2>
@@ -4031,7 +4126,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
             <Plus size={16} /> Conectar calendario
           </button>
         </div>
-      ) : conectadoDeVerdad ? (
+      ) : (
         <div className="calendario-nativo">
           <div className="panel calendario-nativo-panel">
             <div className="calendario-nav">
@@ -4164,26 +4259,6 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
               </div>
             </Modal>
           )}
-        </div>
-      ) : (
-        <div className="calendario-embed-col">
-          {enClaude && (
-            <div className="aviso-preview">
-              <strong>Nota:</strong> la vista previa de Claude no puede mostrar calendarios externos embebidos
-              por una restricción de seguridad del entorno, aunque el calendario esté bien conectado. Vas a
-              verlo funcionando normalmente una vez publicada la página en Vercel. Mientras tanto podés usar
-              "Abrir en Google Calendar" arriba.
-            </div>
-          )}
-          <div className="calendario-embed-wrap">
-            <iframe
-              src={urlEmbed}
-              className="calendario-embed"
-              frameBorder="0"
-              scrolling="no"
-              title="Google Calendar"
-            />
-          </div>
         </div>
       )}
 
@@ -4908,6 +4983,7 @@ export default function App() {
         .panel-pendientes-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
         .panel-pendientes-head h2 { margin: 0; font-size: 18px; }
         .panel-pendientes-contador { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: #F6F3E7; background: var(--ochre); border-radius: 20px; padding: 2px 10px; }
+        .plan-estudio > .muted { margin: -6px 0 10px; }.plan-estudio-lista { display: flex; flex-direction: column; gap: 4px; }.plan-estudio-lista button { display: grid; grid-template-columns: 8px 1fr auto; gap: 10px; align-items: center; padding: 9px 6px; border: 0; border-radius: 8px; text-align: left; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }.plan-estudio-lista button:hover { background: var(--paper-2); }.plan-estudio-lista button > span { width: 7px; height: 30px; border-radius: 6px; }.plan-estudio-lista strong,.plan-estudio-lista small { display: block; }.plan-estudio-lista strong { font-size: 13px; }.plan-estudio-lista small { color: var(--ink-soft); font-size: 11.5px; margin-top: 2px; }.plan-estudio-lista b { font: 700 11px 'IBM Plex Mono', monospace; color: var(--forest); white-space: nowrap; }
         .lista-pendientes-grande { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
         .pendiente-fila-grande { display: flex; align-items: center; gap: 14px; padding: 13px 10px; border-radius: 10px; border-bottom: 1px solid var(--line-soft); }
         .pendiente-fila-grande:last-child { border-bottom: none; }
@@ -5104,6 +5180,7 @@ export default function App() {
         .materia-inicio-nota { max-height: 90px; overflow: hidden; text-overflow: ellipsis; }
         .progreso-barra { width: 100%; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 8px 0 6px; }
         .progreso-barra-relleno { height: 100%; background: var(--forest); border-radius: 999px; transition: width 0.2s; }
+        .progreso-general { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 14px; }.progreso-general > div { min-width: 0; }.progreso-general strong,.progreso-general small { display: block; }.progreso-general strong { font: 600 21px 'Fraunces', serif; margin-top: 3px; color: var(--forest); }.progreso-general small { color: var(--ink-soft); font-size: 10.5px; }
 
         /* Vista semanal (grilla horaria estilo Google Calendar) */
         .semana-grid-wrap { overflow-x: auto; }
@@ -5224,6 +5301,7 @@ export default function App() {
         .lista-examenes li { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 8px; }
         .lista-examenes li:hover { background: var(--paper-2); }
         .lista-examenes-titulo { flex: 1; font-size: 13px; }
+        .lista-examenes-titulo strong,.lista-examenes-titulo small { display: block; }.lista-examenes-titulo small { color: var(--ink-soft); font-size: 10.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.lista-examenes-titulo a { font-size: 10.5px; color: var(--forest); }.meta-promocion { margin: -7px 0 13px; padding: 8px 10px; background: var(--paper-2); border-radius: 7px; color: var(--ink-soft); font-size: 12px; }.meta-promocion strong { color: var(--forest); }
         .lista-examenes-fecha { width: 132px; flex-shrink: 0; font-size: 12px; padding: 6px 8px; }
         .lista-examenes-nota { width: 56px; flex-shrink: 0; text-align: center; }
         .lista-examenes-fecha-texto { width: 90px; flex-shrink: 0; font-size: 12px; text-align: right; white-space: nowrap; }
@@ -5244,6 +5322,7 @@ export default function App() {
         .tarea-titulo-fila { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
         .tarea-progreso { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: var(--ink-soft); background: var(--paper-2); border-radius: 10px; padding: 2px 8px; flex-shrink: 0; }
         .tarea-recurrente { display: inline-flex; align-items: center; gap: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent); border-radius: 10px; padding: 1px 7px 1px 6px; flex-shrink: 0; }
+        .filtros-tareas { margin: 0 0 12px; }.tarea-prioridad,.tarea-etiquetas em { display: inline-flex; align-items: center; border-radius: 10px; padding: 2px 7px; font: 700 9.5px 'IBM Plex Mono', monospace; text-transform: uppercase; font-style: normal; }.tarea-prioridad-alta { color: var(--brick); background: color-mix(in srgb, var(--brick) 13%, transparent); }.tarea-prioridad-media { color: var(--ochre); background: color-mix(in srgb, var(--ochre) 14%, transparent); }.tarea-prioridad-baja { color: var(--forest); background: color-mix(in srgb, var(--forest) 12%, transparent); }.tarea-etiquetas { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }.tarea-etiquetas em { color: var(--ink-soft); background: var(--paper-2); text-transform: none; font-weight: 600; }
         .tarea-fecha { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; color: var(--ink-soft); }
         .tarea-fecha-vencida { color: var(--brick); }
         .tarea-fecha-urgente { color: var(--brick); }
