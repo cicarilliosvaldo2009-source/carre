@@ -1027,6 +1027,36 @@ function Modal({ title, onClose, children, wide }) {
   );
 }
 
+// Fallback único para trackpads en Android/Chrome: algunos no trasladan la
+// rueda a paneles fijos o modales. Busca el primer ancestro desplazable y lo
+// mueve explícitamente, preservando el scroll táctil y los scrolls anidados.
+function useTrackpadScrollFallback() {
+  useEffect(() => {
+    const manejarRueda = (event) => {
+      if (!event.deltaY || event.ctrlKey) return;
+      const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      const delta = event.deltaY * factor;
+      let elemento = event.target instanceof Element ? event.target : null;
+      while (elemento && elemento !== document.documentElement) {
+        const estilo = window.getComputedStyle(elemento);
+        const puedeDesplazar = /auto|scroll/.test(estilo.overflowY) && elemento.scrollHeight > elemento.clientHeight + 1;
+        if (puedeDesplazar) {
+          const maximo = elemento.scrollHeight - elemento.clientHeight;
+          const siguiente = Math.max(0, Math.min(maximo, elemento.scrollTop + delta));
+          if (siguiente !== elemento.scrollTop) {
+            event.preventDefault();
+            elemento.scrollTop = siguiente;
+            return;
+          }
+        }
+        elemento = elemento.parentElement;
+      }
+    };
+    document.addEventListener("wheel", manejarRueda, { capture: true, passive: false });
+    return () => document.removeEventListener("wheel", manejarRueda, true);
+  }, []);
+}
+
 function hexToHsv(hex) {
   const raw = hex.replace("#", "");
   const r = parseInt(raw.slice(0, 2), 16) / 255;
@@ -1724,7 +1754,7 @@ function FilaMateria({ m, materias, onOpen, onCambiarEstado, modo = "normal" }) 
   );
 }
 
-function MateriaFormModal({ materia, materias, onSave, onClose, guardando }) {
+function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guardando }) {
   const [form, setForm] = useState(
     materia || {
       nombre: "", profesor: "", aula: "", color: COLORES[0].hex, estado: "Pendiente",
@@ -1871,6 +1901,7 @@ function MateriaFormModal({ materia, materias, onSave, onClose, guardando }) {
       </div>
 
       <div className="modal-acciones">
+        {materia && <button className="btn-peligro" onClick={onDelete} disabled={guardando}>Eliminar materia</button>}
         <button className="btn-secundario" onClick={onClose} disabled={guardando}>Cancelar</button>
         <button className="btn-primario" onClick={guardar} disabled={guardando}>
           {guardando ? "Sincronizando con Calendar…" : "Guardar materia"}
@@ -1934,8 +1965,7 @@ function BloqueResumen({ bloque, onChange, onDelete }) {
   );
 }
 
-function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal, asistenciaMinima, tabInicial = "inicio" }) {
-  const detalleOverlayRef = useRef(null);
+function MateriaDetalle({ materia, materias, onUpdate, onClose, onEdit, googleCal, asistenciaMinima, tabInicial = "inicio" }) {
   const [tab, setTab] = useState(tabInicial);
   const [resumenActivo, setResumenActivo] = useState(materia.resumenes[0]?.id || null);
   const [nuevoRecurso, setNuevoRecurso] = useState({ tipo: "Apunte", nombre: "", url: "", archivo: "", archivoNombre: "", archivoTipo: "" });
@@ -2238,35 +2268,13 @@ function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit
 
   const resumen = materia.resumenes.find((r) => r.id === resumenActivo);
 
-  // Algunos trackpads de Android/Chrome no delegan la rueda a un panel fijo.
-  // Tomamos el evento no pasivo y desplazamos el contenedor que efectivamente
-  // tenga desborde; el desplazamiento táctil continúa siendo nativo.
-  useEffect(() => {
-    const overlay = detalleOverlayRef.current;
-    if (!overlay) return undefined;
-    const desplazarConRueda = (event) => {
-      if (!event.deltaY || event.ctrlKey) return;
-      const panel = overlay.querySelector(".detalle-panel");
-      const destino = [overlay, panel].find((elemento) => elemento && elemento.scrollHeight > elemento.clientHeight + 1);
-      if (!destino) return;
-      const maximo = destino.scrollHeight - destino.clientHeight;
-      const siguiente = Math.max(0, Math.min(maximo, destino.scrollTop + event.deltaY));
-      if (siguiente === destino.scrollTop) return;
-      event.preventDefault();
-      destino.scrollTop = siguiente;
-    };
-    overlay.addEventListener("wheel", desplazarConRueda, { passive: false });
-    return () => overlay.removeEventListener("wheel", desplazarConRueda);
-  }, []);
-
   return (
-    <div ref={detalleOverlayRef} className="detalle-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="detalle-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="detalle-panel">
         <div className="detalle-head" style={{ "--mc": materia.color }}>
           <button className="volver" onClick={onClose}><ArrowLeft size={18} /> Volver</button>
           <div className="detalle-head-acciones">
             <IconBtn icon={Pencil} title="Editar" onClick={onEdit} />
-            <IconBtn icon={Trash2} title="Eliminar materia" danger onClick={onDelete} />
           </div>
         </div>
 
@@ -3408,6 +3416,7 @@ function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbier
           materias={materias}
           onSave={guardarMateria}
           onClose={() => { setFormAbierto(false); setEditando(null); }}
+          onDelete={editando ? () => { const id = editando.id; setFormAbierto(false); setEditando(null); pedirEliminar(id); } : undefined}
           guardando={sincronizandoMateria}
         />
       )}
@@ -3417,7 +3426,6 @@ function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbier
           materia={materiaAbierta}
           materias={materias}
           onUpdate={(m) => setMaterias((prev) => prev.map((x) => (x.id === m.id ? m : x)))}
-          onDelete={() => pedirEliminar(materiaAbierta.id)}
           onClose={() => setMateriaAbiertaId(null)}
           onEdit={() => { setEditando(materiaAbierta); setFormAbierto(true); }}
           googleCal={googleCal}
@@ -4723,6 +4731,7 @@ function usarRecordatorios(materias, config, asistenciaMinima, configuracionCarg
 }
 
 export default function App() {
+  useTrackpadScrollFallback();
   const { materias, setMaterias, cargado, errorGuardado } = useStore();
   const { calendarId, setCalendarId, cargado: calCargado } = useCalendarioConfig();
   const { sesiones, agregarSesion, cargado: sesionesCargado } = useSesionesEstudio();
