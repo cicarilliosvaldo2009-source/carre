@@ -38,6 +38,9 @@ import {
   Play,
   Pause,
   RotateCcw,
+  Bell,
+  BellRing,
+  SlidersHorizontal,
 } from "lucide-react";
 
 /* =========================================================================
@@ -572,6 +575,7 @@ const STORAGE_KEY = "planificador-carrera-v1";
 const CALENDAR_KEY = "planificador-google-calendar-v1";
 const GOOGLE_CLIENT_KEY = "planificador-google-client-id-v1";
 const SESIONES_KEY = "planificador-sesiones-estudio-v1";
+const NOTIFICACIONES_KEY = "planificador-notificaciones-v1";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
 /* Adaptador de guardado: usa window.storage cuando corre como artifact
@@ -1095,7 +1099,68 @@ function ColorPicker({ value, onChange, descripcionDegradado = "Elegí el color 
    SIDEBAR
    ========================================================================= */
 
-function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema }) {
+const CATEGORIAS_BUSQUEDA = [
+  { id: "todo", label: "Todo" },
+  { id: "materias", label: "Materias" },
+  { id: "resumenes", label: "Resúmenes" },
+  { id: "notas", label: "Notas" },
+  { id: "tareas", label: "Tareas" },
+  { id: "examenes", label: "Exámenes" },
+  { id: "recursos", label: "Recursos" },
+];
+
+function resultadosBusqueda(materias, termino, categoria) {
+  const q = normalizarTexto(termino);
+  if (!q) return [];
+  const coincide = (...campos) => normalizarTexto(campos.filter(Boolean).join(" ")).includes(q);
+  const incluir = (tipo) => categoria === "todo" || categoria === tipo;
+  const resultados = [];
+  materias.forEach((m) => {
+    if (incluir("materias") && coincide(m.nombre, m.profesor, m.aula, m.estado)) resultados.push({ id: `m-${m.id}`, tipo: "materias", titulo: m.nombre, detalle: `${m.profesor || "Sin docente"} · ${m.estado}`, materia: m, tab: "inicio" });
+    if (incluir("resumenes")) (m.resumenes || []).forEach((r) => {
+      const contenido = (r.bloques || []).map((b) => `${b.titulo || ""} ${b.texto || ""}`).join(" ");
+      if (coincide(r.titulo, contenido)) resultados.push({ id: `r-${r.id}`, tipo: "resumenes", titulo: r.titulo || "Resumen sin título", detalle: m.nombre, materia: m, tab: "resumenes" });
+    });
+    if (incluir("notas")) (m.notas || []).forEach((n) => {
+      if (coincide(n.texto)) resultados.push({ id: `n-${n.id}`, tipo: "notas", titulo: n.texto.slice(0, 100) || "Nota vacía", detalle: `${m.nombre} · ${fmtFechaHoraNota(n.fecha)}`, materia: m, tab: "info" });
+    });
+    if (incluir("tareas")) (m.tareas || []).forEach((t) => {
+      if (coincide(t.titulo, t.descripcion)) resultados.push({ id: `t-${t.id}`, tipo: "tareas", titulo: t.titulo, detalle: `${m.nombre}${t.fecha ? ` · ${textoUrgencia(t.fecha)}` : ""}`, materia: m, tab: "tareas" });
+    });
+    if (incluir("examenes")) (m.examenes || []).forEach((e) => {
+      if (coincide(e.titulo, e.tipo, e.fecha)) resultados.push({ id: `e-${e.id}`, tipo: "examenes", titulo: e.titulo || e.tipo, detalle: `${m.nombre} · ${e.tipo}${e.fecha ? ` · ${fmtFechaCorta(e.fecha)}` : ""}`, materia: m, tab: "examenes" });
+    });
+    if (incluir("recursos")) (m.recursos || []).forEach((r) => {
+      if (coincide(r.nombre, r.tipo, r.url, r.archivoNombre)) resultados.push({ id: `rec-${r.id}`, tipo: "recursos", titulo: r.nombre || "Recurso sin nombre", detalle: `${m.nombre} · ${r.tipo || "Recurso"}`, materia: m, tab: "recursos" });
+    });
+  });
+  return resultados.slice(0, 30);
+}
+
+function BusquedaGlobal({ materias, onAbrir, onClose }) {
+  const [termino, setTermino] = useState("");
+  const [categoria, setCategoria] = useState("todo");
+  const inputRef = useRef(null);
+  const resultados = useMemo(() => resultadosBusqueda(materias, termino, categoria), [materias, termino, categoria]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    const cerrar = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", cerrar);
+    return () => window.removeEventListener("keydown", cerrar);
+  }, [onClose]);
+  return <div className="busqueda-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="busqueda-global" role="dialog" aria-modal="true" aria-label="Búsqueda global">
+      <div className="busqueda-global-input"><Search size={20} /><input ref={inputRef} value={termino} onChange={(e) => setTermino(e.target.value)} placeholder="Buscar en todas las materias…" /><kbd>Esc</kbd></div>
+      <div className="busqueda-categorias">{CATEGORIAS_BUSQUEDA.map((c) => <button key={c.id} onClick={() => setCategoria(c.id)} className={categoria === c.id ? "busqueda-categoria-activa" : ""}>{c.label}</button>)}</div>
+      <div className="busqueda-resultados">
+        {!termino.trim() ? <p className="muted">Buscá por título o contenido. Incluye materias, resúmenes, notas, tareas, exámenes y recursos.</p> : resultados.length === 0 ? <p className="muted">No encontramos resultados para “{termino}”.</p> : resultados.map((r) => <button key={r.id} className="busqueda-resultado" onClick={() => onAbrir(r.materia.id, r.tab)}><span className="busqueda-tipo">{CATEGORIAS_BUSQUEDA.find((c) => c.id === r.tipo)?.label.slice(0, -1) || "Materia"}</span><span><strong>{r.titulo}</strong><small>{r.detalle}</small></span><ChevronRight size={16} /></button>)}
+      </div>
+      <footer><span>⌘/Ctrl + B</span><span>{resultados.length ? `${resultados.length} resultados` : ""}</span></footer>
+    </div>
+  </div>;
+}
+
+function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema, onBuscar, onNotificaciones }) {
   const total = materias.length;
   const aprobadas = materias.filter((m) => m.estado === "Aprobada").length;
   const pct = total ? Math.round((aprobadas / total) * 100) : 0;
@@ -1114,6 +1179,7 @@ function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema }) {
         <span>Cursada</span>
       </div>
       <div className="sidebar-nav">
+        <button className="sidebar-item sidebar-buscar" onClick={onBuscar} title="Buscar en todo (Ctrl+B)"><Search size={18} /><span>Buscar <kbd>Ctrl B</kbd></span></button>
         {items.map((it) => (
           <button
             key={it.id}
@@ -1146,6 +1212,7 @@ function Sidebar({ view, setView, materias, onResetear, tema, onToggleTema }) {
         {tema === "oscuro" ? <Sun size={13} /> : <Moon size={13} />}
         {tema === "oscuro" ? "Modo claro" : "Modo oscuro"}
       </button>
+      <button className="sidebar-tema" onClick={onNotificaciones}><Bell size={13} /> Recordatorios</button>
       <button className="sidebar-reset" onClick={onResetear}>
         <Trash2 size={12} /> Restablecer datos de ejemplo
       </button>
@@ -1857,8 +1924,8 @@ function BloqueResumen({ bloque, onChange, onDelete }) {
   );
 }
 
-function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal }) {
-  const [tab, setTab] = useState("inicio");
+function MateriaDetalle({ materia, materias, onUpdate, onDelete, onClose, onEdit, googleCal, tabInicial = "inicio" }) {
+  const [tab, setTab] = useState(tabInicial);
   const [resumenActivo, setResumenActivo] = useState(materia.resumenes[0]?.id || null);
   const [nuevoRecurso, setNuevoRecurso] = useState({ tipo: "Apunte", nombre: "", url: "", archivo: "", archivoNombre: "", archivoTipo: "" });
   const [errorArchivo, setErrorArchivo] = useState("");
@@ -3063,7 +3130,7 @@ function MapaMaterias({ materias, abrirMateria }) {
   );
 }
 
-function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbiertaId, onAprobada, googleCal }) {
+function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbiertaId, tabMateriaInicial, onAprobada, googleCal }) {
   const [formAbierto, setFormAbierto] = useState(false);
   const [editando, setEditando] = useState(null);
   const [filtro, setFiltro] = useState("Cursando");
@@ -3273,6 +3340,7 @@ function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbier
           onClose={() => setMateriaAbiertaId(null)}
           onEdit={() => { setEditando(materiaAbierta); setFormAbierto(true); }}
           googleCal={googleCal}
+          tabInicial={tabMateriaInicial}
         />
       )}
 
@@ -4507,6 +4575,62 @@ function FocusView({ materias, sesiones, agregarSesion }) {
    APP
    ========================================================================= */
 
+function ConfiguracionNotificaciones({ config, setConfig, onClose }) {
+  const [permiso, setPermiso] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
+  const activar = async () => {
+    if (!("Notification" in window)) return;
+    const resultado = await Notification.requestPermission();
+    setPermiso(resultado);
+    if (resultado === "granted") setConfig((c) => ({ ...c, activadas: true }));
+  };
+  const toggle = (campo) => setConfig((c) => ({ ...c, [campo]: !c[campo] }));
+  return <Modal title="Recordatorios reales" onClose={onClose}>
+    <p className="muted" style={{ lineHeight: 1.5, marginBottom: 16 }}>Recibí avisos del sistema aunque esta pestaña quede en segundo plano. Para avisos con la app completamente cerrada hace falta instalarla como PWA y un servicio de notificaciones del dispositivo.</p>
+    {permiso !== "granted" ? <button className="btn-primario" onClick={activar}><BellRing size={16} /> Permitir notificaciones</button> : <p className="notificacion-permitida"><Check size={15} /> Notificaciones permitidas</p>}
+    <div className="notificaciones-opciones">
+      {[['tareas', 'Vencimientos de tareas'], ['examenes', 'Parciales y exámenes'], ['clases', 'Clases próximas'], ['asistencia', 'Riesgo de asistencia']].map(([id, label]) => <label key={id} className="notificacion-opcion"><span>{label}</span><input type="checkbox" checked={config[id]} disabled={permiso !== "granted"} onChange={() => toggle(id)} /></label>)}
+    </div>
+    <label className="notificacion-select">Avisar de clases con anticipación<select value={config.minutosClase} onChange={(e) => setConfig((c) => ({ ...c, minutosClase: Number(e.target.value) }))}><option value={15}>15 minutos</option><option value={30}>30 minutos</option><option value={60}>1 hora</option></select></label>
+    <label className="notificacion-select">Avisar de vencimientos y exámenes<select value={config.diasAnticipacion} onChange={(e) => setConfig((c) => ({ ...c, diasAnticipacion: Number(e.target.value) }))}><option value={0}>El mismo día</option><option value={1}>1 día antes</option><option value={2}>2 días antes</option><option value={7}>1 semana antes</option></select></label>
+  </Modal>;
+}
+
+function usarRecordatorios(materias, config, configuracionCargada) {
+  useEffect(() => { if (configuracionCargada) guardarValor(NOTIFICACIONES_KEY, config); }, [config, configuracionCargada]);
+  useEffect(() => {
+    if (!config.activadas || !("Notification" in window) || Notification.permission !== "granted") return;
+    const enviados = new Set();
+    try { JSON.parse(localStorage.getItem(`${NOTIFICACIONES_KEY}-enviados`) || "[]").forEach((x) => enviados.add(x)); } catch (e) { /* noop */ }
+    const avisar = (id, titulo, cuerpo) => {
+      if (enviados.has(id)) return;
+      new Notification(titulo, { body: cuerpo, icon: "/favicon-192.png", tag: id });
+      enviados.add(id);
+      try { localStorage.setItem(`${NOTIFICACIONES_KEY}-enviados`, JSON.stringify([...enviados].slice(-200))); } catch (e) { /* noop */ }
+    };
+    const revisar = () => {
+      const hoy = toDateStr(new Date());
+      const ahora = new Date();
+      materias.forEach((m) => {
+        if (config.tareas) (m.tareas || []).filter((t) => !t.completada && t.fecha && diffDias(t.fecha) <= config.diasAnticipacion && diffDias(t.fecha) >= 0).forEach((t) => avisar(`tarea-${t.id}-${t.fecha}`, "Tarea próxima", `${t.titulo} · ${m.nombre} · ${textoUrgencia(t.fecha)}`));
+        if (config.examenes) (m.examenes || []).filter((e) => e.fecha && diffDias(e.fecha) <= config.diasAnticipacion && diffDias(e.fecha) >= 0).forEach((e) => avisar(`examen-${e.id}-${e.fecha}`, "Examen próximo", `${e.titulo || e.tipo} · ${m.nombre} · ${textoUrgencia(e.fecha)}`));
+        if (config.clases && m.estado === "Cursando") (m.horarios || []).forEach((h) => {
+          const dia = DIAS.indexOf(h.dia); if (dia < 0) return;
+          const hoyDia = (ahora.getDay() + 6) % 7;
+          if (dia !== hoyDia) return;
+          const [hh, mm] = h.inicio.split(":").map(Number); const inicio = new Date(ahora); inicio.setHours(hh, mm, 0, 0);
+          const mins = (inicio - ahora) / 60000;
+          if (mins >= 0 && mins <= config.minutosClase) avisar(`clase-${m.id}-${h.dia}-${h.inicio}-${hoy}`, "Clase próxima", `${m.nombre} empieza a las ${h.inicio}${m.aula ? ` · ${m.aula}` : ""}`);
+        });
+        if (config.asistencia && m.estado === "Cursando") {
+          const pct = calcularAsistenciaPct(m.asistencia, m.horarios);
+          if (pct !== null && pct < ASISTENCIA_MINIMA) avisar(`asistencia-${m.id}-${hoy}`, "Riesgo de asistencia", `${m.nombre}: ${Math.round(pct)}% de asistencia. El mínimo es ${ASISTENCIA_MINIMA}%.`);
+        }
+      });
+    };
+    revisar(); const intervalo = window.setInterval(revisar, 60000); return () => window.clearInterval(intervalo);
+  }, [materias, config]);
+}
+
 export default function App() {
   const { materias, setMaterias, cargado, errorGuardado } = useStore();
   const { calendarId, setCalendarId, cargado: calCargado } = useCalendarioConfig();
@@ -4524,6 +4648,11 @@ export default function App() {
   };
   const [view, setView] = useState("inicio");
   const [materiaAbiertaId, setMateriaAbiertaId] = useState(null);
+  const [tabMateriaInicial, setTabMateriaInicial] = useState("inicio");
+  const [busquedaAbierta, setBusquedaAbierta] = useState(false);
+  const [configNotificacionesAbierta, setConfigNotificacionesAbierta] = useState(false);
+  const [configNotificaciones, setConfigNotificaciones] = useState({ activadas: false, tareas: true, examenes: true, clases: true, asistencia: true, minutosClase: 30, diasAnticipacion: 1 });
+  const [configNotificacionesCargada, setConfigNotificacionesCargada] = useState(false);
   const [tema, setTema] = useState(() => {
     try { return window.localStorage.getItem("planificador-tema") || "claro"; } catch (e) { return "claro"; }
   });
@@ -4543,8 +4672,18 @@ export default function App() {
   const [confirmarReset, setConfirmarReset] = useState(false);
   const esTablet = useEsTablet();
 
-  const abrirMateria = (id) => {
+  useEffect(() => { (async () => { const guardada = await cargarValor(NOTIFICACIONES_KEY); if (guardada) setConfigNotificaciones((c) => ({ ...c, ...guardada })); setConfigNotificacionesCargada(true); })(); }, []);
+  usarRecordatorios(materias, configNotificaciones, configNotificacionesCargada);
+  useEffect(() => {
+    const atajo = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") { e.preventDefault(); setBusquedaAbierta((v) => !v); }
+    };
+    window.addEventListener("keydown", atajo); return () => window.removeEventListener("keydown", atajo);
+  }, []);
+
+  const abrirMateria = (id, tab = "inicio") => {
     setMateriaAbiertaId(id);
+    setTabMateriaInicial(tab);
     if (view !== "materias") setView("materias");
   };
 
@@ -4672,6 +4811,8 @@ export default function App() {
         .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; background: none; border: none; color: #D8D3BE; font-size: 14px; font-family: inherit; cursor: pointer; text-align: left; transition: background 0.15s; }
         .sidebar-item:hover { background: rgba(237,233,216,0.08); color: #F6F3E7; }
         .sidebar-item-active { background: rgba(237,233,216,0.14); color: #FDFBF2; font-weight: 600; }
+        .sidebar-buscar { background: rgba(237,233,216,0.08); margin-bottom: 5px; }
+        .sidebar-buscar kbd { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #B9B49C; }
         .sidebar-carne { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--forest-dark); border-radius: 10px; }
         .ring { width: 40px; height: 40px; flex-shrink: 0; }
         .sidebar-carne-text { display: flex; flex-direction: column; line-height: 1.25; }
@@ -4689,6 +4830,26 @@ export default function App() {
         .aviso-guardado { flex-shrink: 0; background: #F1DAD3; border-bottom: 1px solid #E0B8AC; color: var(--brick); font-size: 12.5px; font-weight: 600; padding: 10px 24px; }
         .view { flex: 1; min-width: 0; min-height: 0; padding: 32px 36px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .view-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+
+        .busqueda-overlay { position: fixed; z-index: 200; inset: 0; padding: 12vh 20px 20px; background: rgba(24, 27, 20, 0.52); display: flex; justify-content: center; animation: overlayFadeIn .15s ease-out; }
+        .busqueda-global { width: min(720px, 100%); max-height: min(660px, 76vh); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.3); overflow: hidden; animation: modalPopIn .18s ease-out; }
+        .busqueda-global-input { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); color: var(--ink-soft); }
+        .busqueda-global-input input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 17px; }
+        .busqueda-global kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: 10px 'IBM Plex Mono', monospace; color: var(--ink-soft); }
+        .busqueda-categorias { display: flex; gap: 6px; padding: 11px 16px; overflow-x: auto; border-bottom: 1px solid var(--line-soft); }
+        .busqueda-categorias button { flex: 0 0 auto; border: 1px solid var(--line); background: transparent; border-radius: 16px; padding: 5px 10px; color: var(--ink-soft); font: 600 11px inherit; cursor: pointer; }
+        .busqueda-categorias .busqueda-categoria-activa { background: var(--forest); border-color: var(--forest); color: #F6F3E7; }
+        .busqueda-resultados { min-height: 160px; overflow-y: auto; padding: 8px; }
+        .busqueda-resultados > .muted { padding: 20px 12px; line-height: 1.5; }
+        .busqueda-resultado { width: 100%; display: grid; grid-template-columns: 78px minmax(0,1fr) 18px; align-items: center; gap: 10px; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 10px; color: var(--ink); cursor: pointer; font-family: inherit; }
+        .busqueda-resultado:hover { background: var(--paper-2); }
+        .busqueda-resultado strong, .busqueda-resultado small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .busqueda-resultado strong { font-size: 13px; }.busqueda-resultado small { margin-top: 3px; color: var(--ink-soft); font-size: 11.5px; }.busqueda-tipo { color: var(--ochre); font: 700 9.5px 'IBM Plex Mono', monospace; text-transform: uppercase; }
+        .busqueda-global footer { display: flex; justify-content: space-between; border-top: 1px solid var(--line); color: var(--ink-soft); padding: 9px 16px; font-size: 10.5px; }
+        .notificacion-permitida { display: flex; align-items: center; gap: 7px; color: var(--forest); font-size: 13px; font-weight: 600; padding: 8px 0; }
+        .notificaciones-opciones { border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); margin: 16px 0; }
+        .notificacion-opcion { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; font-size: 13.5px; }.notificacion-opcion input { width: 17px; height: 17px; accent-color: var(--forest); }
+        .notificacion-select { display: flex; flex-direction: column; gap: 6px; margin: 13px 0; color: var(--ink-soft); font-size: 12px; font-weight: 600; }.notificacion-select select { color: var(--ink); background: var(--input-bg); border: 1px solid var(--line); padding: 8px; border-radius: 6px; font: inherit; }
 
         .btn-primario { display: inline-flex; align-items: center; gap: 6px; background: var(--forest); color: #F6F3E7; border: none; padding: 10px 16px; border-radius: 8px; font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
         .btn-primario:hover { background: var(--forest-dark); }
@@ -5193,6 +5354,8 @@ export default function App() {
         /* Tablet: conserva el lienzo de escritorio y el scroll del documento
            (más fiable con trackpad), pero usa una barra lateral compacta. */
         .app-shell-tablet { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
+        html:has(.app-shell-tablet), body:has(.app-shell-tablet) { height: auto; min-height: 100%; overflow-y: auto; }
+        #root:has(.app-shell-tablet) { min-height: 100dvh; }
         .app-shell-tablet .sidebar { position: sticky; top: 0; align-self: flex-start; z-index: 40; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
         .app-shell-tablet .main-area { display: block; flex: 1 1 auto; min-height: auto; }
         .app-shell-tablet .view, .app-shell-tablet .calendario-persistente, .app-shell-tablet .focus-persistente { flex: 0 0 auto; min-height: auto; overflow: visible; }
@@ -5216,7 +5379,7 @@ export default function App() {
         .app-shell-tablet .modal-card { width: 460px; max-width: 100%; max-height: 88dvh; overflow-y: auto; }
         .app-shell-tablet .modal-wide { width: 620px; }
         .app-shell-tablet .detalle-overlay { justify-content: flex-end; align-items: stretch; overflow: hidden; padding: 0; }
-        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+        .app-shell-tablet .detalle-panel { width: max(560px, 50vw); max-width: 100%; height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
         /* Las siete secciones caben sin desplazamiento horizontal: cuatro
            pestañas por fila en lugar de una única fila demasiado larga. */
         .app-shell-tablet .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
@@ -5226,6 +5389,8 @@ export default function App() {
            puntero táctil. No cambia el contenido a versión móvil: mantiene
            el layout de PC y comprime exclusivamente la barra izquierda. */
         @media (min-width: 700px) and (pointer: coarse) {
+          html, body { height: auto; min-height: 100%; overflow-y: auto; }
+          #root { min-height: 100dvh; }
           .app-shell { flex-direction: row; height: auto; min-height: 100dvh; overflow: visible; }
           .sidebar { position: sticky; top: 0; align-self: flex-start; width: 68px; height: 100dvh; flex-direction: column; align-items: center; padding: 16px 12px; gap: 16px; box-shadow: 2px 0 10px rgba(35,39,31,0.12); }
           .main-area { display: block; flex: 1 1 auto; min-height: auto; }
@@ -5236,13 +5401,13 @@ export default function App() {
           .sidebar-item span { display: none; }
           .sidebar-tema { width: 44px; height: 40px; margin: auto 0 0; padding: 0; justify-content: center; font-size: 0; }
           .sidebar-tema svg { width: 16px; height: 16px; }
-          .detalle-panel { overflow-x: hidden; }
+          .detalle-panel { overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
           .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; padding: 12px 18px 0; }
           .tab { min-width: 0; padding: 9px 5px; font-size: 10.5px; letter-spacing: 0.02em; white-space: nowrap; }
         }
       `}</style>
 
-      <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} />
+      <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} tema={tema} onToggleTema={toggleTema} onBuscar={() => setBusquedaAbierta(true)} onNotificaciones={() => setConfigNotificacionesAbierta(true)} />
 
       <div className="main-area">
         {errorGuardado && (
@@ -5268,6 +5433,7 @@ export default function App() {
                 setMaterias={setMaterias}
                 materiaAbiertaId={materiaAbiertaId}
                 setMateriaAbiertaId={setMateriaAbiertaId}
+                tabMateriaInicial={tabMateriaInicial}
                 onAprobada={dispararConfetti}
                 googleCal={googleCal}
               />
@@ -5304,6 +5470,9 @@ export default function App() {
           </div>
         </Modal>
       )}
+
+      {busquedaAbierta && <BusquedaGlobal materias={materias} onClose={() => setBusquedaAbierta(false)} onAbrir={(id, tab) => { setBusquedaAbierta(false); abrirMateria(id, tab); }} />}
+      {configNotificacionesAbierta && <ConfiguracionNotificaciones config={configNotificaciones} setConfig={setConfigNotificaciones} onClose={() => setConfigNotificacionesAbierta(false)} />}
 
       {confettiActivo && <Confetti key={confettiKey} onDone={() => setConfettiActivo(false)} />}
     </div>
