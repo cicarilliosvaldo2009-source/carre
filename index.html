@@ -9,20 +9,16 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Cursada</title>
     <style>
-      html {
-        min-height: 100%;
-      }
-      body, #root {
+      html, body, #root {
+        height: 100%;
         min-height: 100dvh;
         margin: 0;
         padding: 0;
       }
       body {
-        /* La aplicación de escritorio administra su propio panel con scroll.
-           En tablet, en cambio, el documento debe poder desplazarse de forma
-           nativa con dedo y trackpad. */
-        overflow-x: hidden;
-        overflow-y: auto;
+        /* El scroll se define dentro de la app. Evita que el documento se
+           convierta en un segundo contenedor que capture el trackpad. */
+        overflow: hidden;
       }
     </style>
   </head>
