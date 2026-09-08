@@ -41,7 +41,9 @@ import {
   Bell,
   BellRing,
   SlidersHorizontal,
+  LogOut,
 } from "lucide-react";
+import { getSupabaseUser, supabase } from "./lib/supabase";
 
 /* =========================================================================
    TOKENS — "ficha de cátedra": estética de fichero de biblioteca / libreta
@@ -579,15 +581,32 @@ const NOTIFICACIONES_KEY = "planificador-notificaciones-v1";
 const CONFIGURACION_KEY = "planificador-configuracion-v1";
 const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 
-/* Adaptador de guardado: usa window.storage cuando corre como artifact
-   dentro de Claude, y localStorage del navegador cuando corre como
-   página independiente (por ejemplo, ya deployada en Vercel). Así el
-   mismo archivo funciona en los dos lugares sin tocar nada. */
+/* Adaptador de persistencia: Supabase es la fuente remota cuando las
+   variables VITE_SUPABASE_* están configuradas. El almacenamiento local se
+   conserva como respaldo y permite abrir la app antes de configurar el
+   proyecto. */
 const tieneStorageClaude = () =>
   typeof window !== "undefined" && window.storage && typeof window.storage.get === "function";
 
 async function guardarValor(key, valor) {
   const json = JSON.stringify(valor);
+  if (supabase) {
+    try {
+      const user = await getSupabaseUser();
+      if (!user) throw new Error("No se pudo iniciar una sesión de Supabase");
+      const { error } = await supabase
+        .from("app_state")
+        .upsert({ user_id: user.id, key, data: valor }, { onConflict: "user_id,key" });
+      if (!error) {
+        // Mantener una copia local permite recuperar el estado sin conexión.
+        window.localStorage.setItem(key, json);
+        return true;
+      }
+      throw error;
+    } catch (e) {
+      console.error("No se pudo guardar en Supabase; se usa la copia local", e);
+    }
+  }
   if (tieneStorageClaude()) {
     try {
       await window.storage.set(key, json, false);
@@ -606,6 +625,22 @@ async function guardarValor(key, valor) {
 }
 
 async function cargarValor(key) {
+  if (supabase) {
+    try {
+      const user = await getSupabaseUser();
+      if (!user) throw new Error("No se pudo iniciar una sesión de Supabase");
+      const { data, error } = await supabase
+        .from("app_state")
+        .select("data")
+        .eq("user_id", user.id)
+        .eq("key", key)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.data) return data.data;
+    } catch (e) {
+      console.error("No se pudo cargar desde Supabase; se usa la copia local", e);
+    }
+  }
   if (tieneStorageClaude()) {
     try {
       const res = await window.storage.get(key, false);
@@ -4661,7 +4696,7 @@ function FocusView({ materias, sesiones, agregarSesion }) {
    APP
    ========================================================================= */
 
-function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones }) {
+function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistenciaMinima, configNotificaciones, setConfigNotificaciones, user, onSignOut }) {
   const [permiso, setPermiso] = useState(() => ("Notification" in window ? Notification.permission : "unsupported"));
   const activar = async () => {
     if (!("Notification" in window)) return;
@@ -4676,6 +4711,10 @@ function ConfiguracionView({ tema, onToggleTema, asistenciaMinima, setAsistencia
       <div><h2>Apariencia</h2><p className="muted">Elegí cómo se ve el planificador.</p></div>
       <button className="btn-secundario" onClick={onToggleTema}>{tema === "oscuro" ? <><Sun size={16} /> Usar modo claro</> : <><Moon size={16} /> Usar modo oscuro</>}</button>
     </section>
+    {user && <section className="panel configuracion-seccion">
+      <div><h2>Cuenta</h2><p className="muted">Sesión iniciada como {user.email}.</p></div>
+      <button className="btn-secundario" onClick={onSignOut}><LogOut size={16} /> Cerrar sesión</button>
+    </section>}
     <section className="panel configuracion-seccion">
       <div><h2>Asistencia</h2><p className="muted">Porcentaje mínimo para no quedar libre por faltas.</p></div>
       <label className="configuracion-porcentaje"><span>Mínimo</span><input type="number" min="0" max="100" value={asistenciaMinima} onChange={(e) => setAsistenciaMinima(Math.max(0, Math.min(100, Number(e.target.value) || 0)))} /><b>%</b></label>
@@ -4730,8 +4769,7 @@ function usarRecordatorios(materias, config, asistenciaMinima, configuracionCarg
   }, [materias, config, asistenciaMinima]);
 }
 
-export default function App() {
-  useTrackpadScrollFallback();
+function PlanificadorApp({ user, onSignOut }) {
   const { materias, setMaterias, cargado, errorGuardado } = useStore();
   const { calendarId, setCalendarId, cargado: calCargado } = useCalendarioConfig();
   const { sesiones, agregarSesion, cargado: sesionesCargado } = useSesionesEstudio();
@@ -5576,7 +5614,7 @@ export default function App() {
                 onVincularExamenDesdeEvento={vincularExamenDesdeEvento}
               />
             </div>
-            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} />}
+            {view === "configuracion" && <ConfiguracionView tema={tema} onToggleTema={toggleTema} asistenciaMinima={configuracion.asistenciaMinima} setAsistenciaMinima={(asistenciaMinima) => setConfiguracion((c) => ({ ...c, asistenciaMinima }))} configNotificaciones={configNotificaciones} setConfigNotificaciones={setConfigNotificaciones} user={user} onSignOut={onSignOut} />}
           </>
         )}
       </div>
@@ -5598,4 +5636,77 @@ export default function App() {
       {confettiActivo && <Confetti key={confettiKey} onDone={() => setConfettiActivo(false)} />}
     </div>
   );
+}
+
+function useAuth() {
+  const [user, setUser] = useState(undefined);
+
+  useEffect(() => {
+    if (!supabase) { setUser(null); return undefined; }
+    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user || null));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  return { user, cargando: user === undefined };
+}
+
+function Acceso() {
+  const [modo, setModo] = useState("entrar");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [error, setError] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    setError(""); setMensaje("");
+    if (modo === "registro" && password.length < 6) { setError("La contraseña debe tener al menos 6 caracteres."); return; }
+    setEnviando(true);
+    try {
+      if (modo === "registro") {
+        const { data, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (authError) throw authError;
+        if (!data.session) setMensaje("Revisá tu correo y confirmá tu cuenta para iniciar sesión.");
+      } else {
+        const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        if (authError) throw authError;
+      }
+    } catch (err) {
+      setError(err.message || "No se pudo completar la operación.");
+    } finally { setEnviando(false); }
+  };
+
+  return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20, background: "#F6F3E7", color: "#23271F", fontFamily: "IBM Plex Sans, sans-serif" }}>
+    <section style={{ width: "min(100%, 410px)", background: "#FFFEF7", border: "1px solid #DAD4BC", borderRadius: 14, padding: 28, boxShadow: "0 8px 30px rgba(35,39,31,.10)" }}>
+      <p style={{ margin: 0, color: "#8A6F34", fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase" }}>Planificador de carrera</p>
+      <h1 style={{ margin: "8px 0", fontFamily: "Fraunces, Georgia, serif", fontSize: 29 }}>{modo === "entrar" ? "Bienvenido/a" : "Crear cuenta"}</h1>
+      <p style={{ margin: "0 0 20px", color: "#6C6A60", fontSize: 14, lineHeight: 1.5 }}>Guardá y consultá tus materias desde cualquier dispositivo.</p>
+      <form onSubmit={enviar} style={{ display: "grid", gap: 13 }}>
+        <label style={{ display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: 10, border: "1px solid #CFC8AC", borderRadius: 7, font: "inherit" }} /></label>
+        <label style={{ display: "grid", gap: 5, fontSize: 13, fontWeight: 600 }}>Contraseña<input required type="password" minLength="6" autoComplete={modo === "entrar" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} style={{ padding: 10, border: "1px solid #CFC8AC", borderRadius: 7, font: "inherit" }} /></label>
+        {error && <p role="alert" style={{ margin: 0, color: "#B5432E", fontSize: 13 }}>{error}</p>}
+        {mensaje && <p style={{ margin: 0, color: "#356446", fontSize: 13 }}>{mensaje}</p>}
+        <button className="btn-primario" disabled={enviando} style={{ justifyContent: "center", marginTop: 4 }}>{enviando ? "Procesando…" : modo === "entrar" ? "Iniciar sesión" : "Crear cuenta"}</button>
+      </form>
+      <button type="button" onClick={() => { setModo((m) => m === "entrar" ? "registro" : "entrar"); setMensaje(""); setError(""); }} style={{ width: "100%", marginTop: 14, border: 0, background: "transparent", color: "#2C5C8A", cursor: "pointer", font: "inherit", fontSize: 13 }}>
+        {modo === "entrar" ? "¿No tenés cuenta? Crear una" : "¿Ya tenés cuenta? Iniciar sesión"}
+      </button>
+    </section>
+  </main>;
+}
+
+export default function App() {
+  useTrackpadScrollFallback();
+  const { user, cargando } = useAuth();
+  if (cargando) return <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center" }}>Cargando…</main>;
+  if (supabase && !user) return <Acceso />;
+  return <PlanificadorApp user={user} onSignOut={() => supabase?.auth.signOut()} />;
 }
