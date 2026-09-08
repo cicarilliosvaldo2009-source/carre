@@ -12,3 +12,11 @@ La app guarda los datos por cuenta. Si Supabase no está configurado o no se pue
 No uses la `service_role` key en el frontend. Las políticas RLS de la migración hacen que cada sesión sólo pueda leer y modificar sus propios datos.
 
 Podés crear una cuenta o iniciar sesión desde la pantalla inicial. Con la misma cuenta podrás acceder a tus datos desde cualquier dispositivo.
+
+## Inicio con Google (opcional)
+
+1. En Google Cloud Console, creá un cliente OAuth de tipo **Web application**. Como origen autorizado agregá la URL de Vercel y `http://localhost:5173`.
+2. En sus **Authorized redirect URIs** agregá exactamente la URL callback que Supabase muestra en **Authentication > Providers > Google** (`https://<tu-project-ref>.supabase.co/auth/v1/callback`).
+3. Copiá el Client ID y Client Secret en ese proveedor de Google en Supabase, activalo y guardá.
+
+La clave secreta de Google sólo se guarda en Supabase; nunca va en Vercel ni en el frontend.
