@@ -636,7 +636,9 @@ async function cargarValor(key) {
         .eq("key", key)
         .maybeSingle();
       if (error) throw error;
-      if (data?.data) return data.data;
+      // Una respuesta correcta sin fila representa una cuenta nueva: no se
+      // mezclan los datos locales de otra sesión o de datos de demostración.
+      return data?.data || null;
     } catch (e) {
       console.error("No se pudo cargar desde Supabase; se usa la copia local", e);
     }
@@ -711,6 +713,10 @@ function useStore() {
       if (datos) {
         const base = (datos.materias || []).map((m) => ({ ...m, notas: normalizarNotasEntradas(m.notas), tareas: (m.tareas || []).map((t) => ({ prioridad: "Media", etiquetas: [], archivo: "", archivoNombre: "", archivoTipo: "", ...t })) }));
         setMaterias(base.map((m) => ({ ...m, correlativas: normalizarCorrelativas(m.correlativas, base) })));
+      } else if (supabase) {
+        // Cada cuenta autenticada empieza sin datos. Los ejemplos quedan solo
+        // para el modo local, cuando Supabase todavía no está configurado.
+        setMaterias([]);
       } else {
         const seed = seedData();
         setMaterias(seed.materias);
@@ -1222,7 +1228,7 @@ function BusquedaGlobal({ materias, onAbrir, onClose }) {
   </div>;
 }
 
-function Sidebar({ view, setView, materias, onResetear, onBuscar }) {
+function Sidebar({ view, setView, materias, onBuscar }) {
   const total = materias.length;
   const aprobadas = materias.filter((m) => m.estado === "Aprobada").length;
   const pct = total ? Math.round((aprobadas / total) * 100) : 0;
@@ -1272,9 +1278,6 @@ function Sidebar({ view, setView, materias, onResetear, onBuscar }) {
       </div>
       <button className={`sidebar-tema ${view === "configuracion" ? "sidebar-item-active" : ""}`} onClick={() => setView("configuracion")}>
         <Settings size={13} /> Configuración
-      </button>
-      <button className="sidebar-reset" onClick={onResetear}>
-        <Trash2 size={12} /> Restablecer datos de ejemplo
       </button>
     </nav>
   );
@@ -5566,7 +5569,7 @@ function PlanificadorApp({ user, onSignOut }) {
         }
       `}</style>
 
-      <Sidebar view={view} setView={setView} materias={materias} onResetear={() => setConfirmarReset(true)} onBuscar={() => setBusquedaAbierta(true)} />
+      <Sidebar view={view} setView={setView} materias={materias} onBuscar={() => setBusquedaAbierta(true)} />
 
       <div className="main-area">
         {errorGuardado && (
