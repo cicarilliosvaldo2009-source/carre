@@ -3471,6 +3471,55 @@ function MapaMaterias({ materias, abrirMateria }) {
     return out;
   }, [materias, posiciones]);
 
+  // Quién requiere a cada materia (el sentido inverso de "correlativas"),
+  // para poder subir y bajar por toda la cadena a partir de cualquier nodo.
+  const requeridaPor = useMemo(() => {
+    const map = new Map();
+    materias.forEach((m) => {
+      (m.correlativas || []).forEach((reqId) => {
+        if (!map.has(reqId)) map.set(reqId, []);
+        map.get(reqId).push(m.id);
+      });
+    });
+    return map;
+  }, [materias]);
+
+  // Al pasar el mouse por una materia, se arma toda su cadena: para atrás
+  // (todo lo que necesitó, directa o indirectamente, para llegar hasta acá)
+  // y para adelante (todo lo que esta materia habilita más adelante). El
+  // resto del mapa se atenúa, para poder seguir esa cadena sin que compita
+  // visualmente con el resto de líneas cruzadas.
+  const [hoverId, setHoverId] = useState(null);
+  const cadena = useMemo(() => {
+    if (!hoverId) return null;
+    const materiaPorId = new Map(materias.map((m) => [m.id, m]));
+    const nodos = new Set([hoverId]);
+    const aristas = new Set();
+
+    const pilaArriba = [hoverId];
+    while (pilaArriba.length) {
+      const actual = pilaArriba.pop();
+      (materiaPorId.get(actual)?.correlativas || []).forEach((reqId) => {
+        if (!materiaPorId.has(reqId)) return;
+        aristas.add(`${reqId}-${actual}`);
+        if (!nodos.has(reqId)) { nodos.add(reqId); pilaArriba.push(reqId); }
+      });
+    }
+
+    const pilaAbajo = [hoverId];
+    while (pilaAbajo.length) {
+      const actual = pilaAbajo.pop();
+      (requeridaPor.get(actual) || []).forEach((depId) => {
+        aristas.add(`${actual}-${depId}`);
+        if (!nodos.has(depId)) { nodos.add(depId); pilaAbajo.push(depId); }
+      });
+    }
+
+    return { nodos, aristas };
+  }, [hoverId, materias, requeridaPor]);
+
+  const salirDeNodo = (id) => setHoverId((h) => (h === id ? null : h));
+
   const maxFilas = Math.max(1, ...columnas.map(([, items]) => items.length));
   const anchoTotal = MAPA_PAD * 2 + columnas.length * MAPA_NODO_W + Math.max(0, columnas.length - 1) * MAPA_COL_GAP;
   const altoTotal = MAPA_PAD * 2 + MAPA_HEADER_H + maxFilas * (MAPA_NODO_H + MAPA_ROW_GAP);
@@ -3482,7 +3531,7 @@ function MapaMaterias({ materias, abrirMateria }) {
   return (
     <div className="mapa-wrap">
       <div className="mapa-scroll">
-        <div className="mapa-lienzo" style={{ width: anchoTotal, height: altoTotal }}>
+        <div className={`mapa-lienzo ${cadena ? "mapa-lienzo-con-foco" : ""}`} style={{ width: anchoTotal, height: altoTotal }}>
           {columnas.map(([anio], colIdx) => (
             <div
               key={anio}
@@ -3502,6 +3551,7 @@ function MapaMaterias({ materias, abrirMateria }) {
                 stroke={l.cumplida ? "#6FB37E" : "#CBC3A6"}
                 strokeWidth={l.cumplida ? 2 : 1.5}
                 strokeDasharray={l.cumplida ? "0" : "4 3"}
+                className={`mapa-linea ${cadena ? (cadena.aristas.has(l.id) ? "mapa-linea-foco" : "mapa-linea-atenuada") : ""}`}
               />
             ))}
           </svg>
@@ -3510,15 +3560,20 @@ function MapaMaterias({ materias, abrirMateria }) {
             const pos = posiciones[m.id];
             if (!pos) return null;
             const estadoNodo = estadoMapaNodo(m, materias);
+            const enFoco = cadena ? cadena.nodos.has(m.id) : true;
             return (
               <button
                 key={m.id}
-                className={`mapa-nodo ${estadoNodo === "bloqueada" ? "mapa-nodo-bloqueada" : ""}`}
+                className={`mapa-nodo ${estadoNodo === "bloqueada" ? "mapa-nodo-bloqueada" : ""} ${!enFoco ? "mapa-nodo-atenuado" : ""} ${m.id === hoverId ? "mapa-nodo-activo" : ""}`}
                 style={{
                   left: pos.x, top: pos.y, width: MAPA_NODO_W, height: MAPA_NODO_H,
                   "--sc": MAPA_NODO_COLOR[estadoNodo], "--mc": m.color,
                 }}
                 onClick={() => abrirMateria(m.id)}
+                onMouseEnter={() => setHoverId(m.id)}
+                onMouseLeave={() => salirDeNodo(m.id)}
+                onFocus={() => setHoverId(m.id)}
+                onBlur={() => salirDeNodo(m.id)}
                 title={m.nombre}
               >
                 <span className="mapa-nodo-dot" />
@@ -5804,6 +5859,13 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-nodo-estado { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--sc); font-weight: 700; }
         .mapa-nodo-dot { display: none; }
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
+        .mapa-nodo { opacity: 1; }
+        .mapa-nodo-atenuado { opacity: 0.28; }
+        .mapa-nodo-atenuado:hover { opacity: 0.55; }
+        .mapa-nodo-activo { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 6; }
+        .mapa-linea { transition: opacity 0.15s; }
+        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.12; }
+        .mapa-lienzo-con-foco .mapa-linea-foco { opacity: 1; }
 
         /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
            En estos últimos, el cursor puede ser "fino" pero el scroll de un
