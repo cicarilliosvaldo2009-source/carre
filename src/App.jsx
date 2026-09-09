@@ -1183,6 +1183,15 @@ const CATEGORIAS_BUSQUEDA = [
   { id: "examenes", label: "Exámenes" },
   { id: "recursos", label: "Recursos" },
 ];
+const CATEGORIA_BUSQUEDA_COLOR = {
+  todo: "#8A6F34",
+  materias: "#2C5C8A",
+  resumenes: "#A487D9",
+  notas: "#DDBB5E",
+  tareas: "#E5A164",
+  examenes: "#C63637",
+  recursos: "#4FBA88",
+};
 
 function resultadosBusqueda(materias, termino, categoria) {
   const q = normalizarTexto(termino);
@@ -1215,17 +1224,44 @@ function resultadosBusqueda(materias, termino, categoria) {
 function BusquedaGlobal({ materias, onAbrir, onClose }) {
   const [termino, setTermino] = useState("");
   const [categoria, setCategoria] = useState("todo");
+  const [categoriaMenuAbierto, setCategoriaMenuAbierto] = useState(false);
   const inputRef = useRef(null);
   const resultados = useMemo(() => resultadosBusqueda(materias, termino, categoria), [materias, termino, categoria]);
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => {
-    const cerrar = (e) => { if (e.key === "Escape") onClose(); };
+    const cerrar = (e) => { if (e.key === "Escape") { categoriaMenuAbierto ? setCategoriaMenuAbierto(false) : onClose(); } };
     window.addEventListener("keydown", cerrar);
     return () => window.removeEventListener("keydown", cerrar);
-  }, [onClose]);
+  }, [onClose, categoriaMenuAbierto]);
+  const categoriaActual = CATEGORIAS_BUSQUEDA.find((c) => c.id === categoria);
   return <div className="busqueda-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
     <div className="busqueda-global" role="dialog" aria-modal="true" aria-label="Búsqueda global">
-      <div className="busqueda-global-input"><Search size={20} /><input ref={inputRef} value={termino} onChange={(e) => setTermino(e.target.value)} placeholder="Buscar en todas las materias…" /><span className="busqueda-selector"><select value={categoria} onChange={(e) => setCategoria(e.target.value)} aria-label="Categoría de búsqueda">{CATEGORIAS_BUSQUEDA.map((c) => <option key={c.id} value={c.id}>{c.id === "todo" ? "Todo" : `en ${c.label.toLowerCase()}`}</option>)}</select><ChevronDown size={15} /></span><kbd>Esc</kbd></div>
+      <div className="busqueda-global-input">
+        <Search size={20} />
+        <input ref={inputRef} value={termino} onChange={(e) => setTermino(e.target.value)} placeholder="Buscar en todas las materias…" />
+        <span className="busqueda-selector">
+          <button type="button" className="busqueda-selector-btn" onClick={() => setCategoriaMenuAbierto((v) => !v)} aria-haspopup="true" aria-expanded={categoriaMenuAbierto}>
+            <span className="busqueda-selector-dot" style={{ background: CATEGORIA_BUSQUEDA_COLOR[categoria] }} />
+            {categoria === "todo" ? "Todo" : `en ${categoriaActual.label.toLowerCase()}`}
+            <ChevronDown size={15} />
+          </button>
+          {categoriaMenuAbierto && (
+            <>
+              <div className="fila-menu-backdrop" onClick={() => setCategoriaMenuAbierto(false)} />
+              <div className="fila-menu-pop busqueda-categoria-pop">
+                <p className="fila-menu-label">Categoría</p>
+                {CATEGORIAS_BUSQUEDA.map((c) => (
+                  <button key={c.id} className={c.id === categoria ? "activo" : ""} onClick={() => { setCategoria(c.id); setCategoriaMenuAbierto(false); }}>
+                    <span className="fila-menu-dot" style={{ background: CATEGORIA_BUSQUEDA_COLOR[c.id] }} /> {c.label}
+                    {c.id === categoria && <Check size={13} className="busqueda-categoria-check" />}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </span>
+        <kbd>Esc</kbd>
+      </div>
       {termino.trim() && <div className="busqueda-resultados">
         {resultados.length === 0 ? <p className="muted">No encontramos resultados para “{termino}”.</p> : resultados.map((r) => <button key={r.id} className="busqueda-resultado" onClick={() => onAbrir(r.materia.id, r.tab)}><span className="busqueda-tipo">{CATEGORIAS_BUSQUEDA.find((c) => c.id === r.tipo)?.label.slice(0, -1) || "Materia"}</span><span><strong>{r.titulo}</strong><small>{r.detalle}</small></span><ChevronRight size={16} /></button>)}
       </div>}
@@ -4985,7 +5021,13 @@ function PlanificadorApp({ user, onSignOut }) {
         .busqueda-global-input input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; }
         .busqueda-global kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: 10px 'IBM Plex Mono', monospace; color: var(--ink-soft); }
         .busqueda-selector { position: relative; display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid var(--line); padding-left: 12px; }
-        .busqueda-selector select { appearance: none; -webkit-appearance: none; border: 0; outline: 0; background: transparent; color: var(--ink-soft); padding: 4px 22px 4px 0; font: 13px inherit; cursor: pointer; }.busqueda-selector svg { position: absolute; right: 3px; pointer-events: none; }
+        .busqueda-selector-btn { display: flex; align-items: center; gap: 6px; border: 0; outline: 0; background: transparent; color: var(--ink-soft); padding: 4px 0; font: 13px inherit; cursor: pointer; white-space: nowrap; }
+        .busqueda-selector-btn:hover { color: var(--ink); }
+        .busqueda-selector-btn svg:last-child { flex-shrink: 0; }
+        .busqueda-selector-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .busqueda-categoria-pop { top: 36px; min-width: 190px; }
+        .fila-menu-pop button.activo { background: var(--paper-2); font-weight: 600; }
+        .busqueda-categoria-check { margin-left: auto; color: var(--ink-soft); flex-shrink: 0; }
         .busqueda-resultados { max-height: min(480px, 62vh); overflow-y: auto; padding: 7px; border-top: 1px solid var(--line); }
         .busqueda-resultados > .muted { padding: 20px 12px; line-height: 1.5; }
         .busqueda-resultado { width: 100%; display: grid; grid-template-columns: 78px minmax(0,1fr) 18px; align-items: center; gap: 10px; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 10px; color: var(--ink); cursor: pointer; font-family: inherit; }
