@@ -43,7 +43,7 @@ import {
   SlidersHorizontal,
   LogOut,
 } from "lucide-react";
-import { getSupabaseUser, supabase } from "./lib/supabase";
+import { getSupabaseUser, supabase, invocarGoogleCalendarAuth } from "./lib/supabase";
 
 /* =========================================================================
    TOKENS — "ficha de cátedra": estética de fichero de biblioteca / libreta
@@ -576,6 +576,7 @@ function seedData() {
 const STORAGE_KEY = "planificador-carrera-v1";
 const CALENDAR_KEY = "planificador-google-calendar-v1";
 const GOOGLE_CLIENT_KEY = "planificador-google-client-id-v1";
+const GOOGLE_TOKEN_KEY = "planificador-google-token-v1";
 const SESIONES_KEY = "planificador-sesiones-estudio-v1";
 const NOTIFICACIONES_KEY = "planificador-notificaciones-v1";
 const CONFIGURACION_KEY = "planificador-configuracion-v1";
@@ -803,19 +804,68 @@ function useGoogleClientId() {
   return { clientId, setClientId, cargado };
 }
 
-/* Adaptador de autenticación con Google Identity Services. El token no se
-   guarda: al volver a abrir la app se intenta obtener uno nuevo en silencio
-   usando el consentimiento ya concedido al mismo navegador. */
+/* Adaptador de autenticación con Google. Tiene dos modos:
+   - Con Supabase configurado (usaBackend=true): usa el flujo de "código de
+     autorización" de Google. El código se canjea en la Edge Function
+     "google-calendar", que guarda el refresh token del lado del servidor y
+     lo usa para conseguir access tokens nuevos sin depender del navegador.
+     Con esto, conectar una vez alcanza para siempre (hasta que el usuario
+     mismo desconecte la cuenta).
+   - Sin Supabase (usaBackend=false): como no hay backend para guardar un
+     refresh token de forma segura, se usa el flujo implícito de antes
+     (access token de ~1 hora, cacheado en el storage local del navegador y
+     renovado en silencio mientras Google recuerde la sesión). */
 function useGoogleAuth(clientId) {
-  const [accessToken, setAccessToken] = useState(null);
+  const usaBackend = !!supabase;
+  const [accessToken, setAccessTokenState] = useState(null);
+  const [tokenExpiraEn, setTokenExpiraEn] = useState(0); // epoch ms
+  const [tokenListo, setTokenListo] = useState(false);
   const [conectando, setConectando] = useState(false);
   const [errorAuth, setErrorAuth] = useState("");
   const [scriptListo, setScriptListo] = useState(
     typeof window !== "undefined" && !!window.google?.accounts?.oauth2
   );
-  const tokenClientRef = useRef(null);
+  const codeClientRef = useRef(null); // modo con backend (código de autorización)
+  const tokenClientRef = useRef(null); // modo sin backend (implícito, de respaldo)
   const intentoSilenciosoRef = useRef(false);
   const solicitudManualRef = useRef(false);
+
+  // Solo se usa en el modo sin backend: cachea el access token en el
+  // storage local del navegador para reutilizarlo entre recargas.
+  const guardarTokenLocal = (token, expiresInSeg) => {
+    const expiraEn = Date.now() + (Number(expiresInSeg) || 3600) * 1000;
+    setAccessTokenState(token);
+    setTokenExpiraEn(expiraEn);
+    guardarValor(GOOGLE_TOKEN_KEY, { accessToken: token, expiraEn });
+  };
+
+  // Carga inicial: con backend, le pide un access token nuevo a la Edge
+  // Function usando el refresh token guardado (no depende del navegador).
+  // Sin backend, recupera el último access token cacheado si todavía es
+  // válido (con 2 minutos de margen).
+  useEffect(() => {
+    (async () => {
+      if (usaBackend) {
+        try {
+          const datos = await invocarGoogleCalendarAuth("refresh");
+          if (datos?.accessToken) {
+            setAccessTokenState(datos.accessToken);
+            setTokenExpiraEn(Date.now() + (Number(datos.expiresIn) || 3600) * 1000);
+          }
+        } catch (e) {
+          // Todavía no hay una conexión guardada, o la Edge Function no está
+          // desplegada: se sigue igual, mostrando el botón de conexión.
+        }
+      } else {
+        const datos = await cargarValor(GOOGLE_TOKEN_KEY);
+        if (datos?.accessToken && datos.expiraEn > Date.now() + 120000) {
+          setAccessTokenState(datos.accessToken);
+          setTokenExpiraEn(datos.expiraEn);
+        }
+      }
+      setTokenListo(true);
+    })();
+  }, [usaBackend]);
 
   useEffect(() => {
     if (scriptListo || typeof window === "undefined") return;
@@ -834,55 +884,122 @@ function useGoogleAuth(clientId) {
     document.head.appendChild(script);
   }, [scriptListo]);
 
+  // Modo con backend: inicializa el cliente de "código de autorización".
   useEffect(() => {
-    if (!scriptListo || !clientId || !window.google?.accounts?.oauth2) return;
+    if (!usaBackend || !scriptListo || !clientId || !window.google?.accounts?.oauth2) return;
+    codeClientRef.current = window.google.accounts.oauth2.initCodeClient({
+      client_id: clientId,
+      scope: GOOGLE_CALENDAR_SCOPE,
+      ux_mode: "popup",
+      callback: async (resp) => {
+        if (resp.error) {
+          setConectando(false);
+          setErrorAuth("No se pudo conectar con Google (" + resp.error + ").");
+          return;
+        }
+        try {
+          const datos = await invocarGoogleCalendarAuth("exchange-code", {
+            code: resp.code,
+            origin: window.location.origin,
+          });
+          if (datos?.error) throw new Error(datos.error);
+          setAccessTokenState(datos.accessToken);
+          setTokenExpiraEn(Date.now() + (Number(datos.expiresIn) || 3600) * 1000);
+          setErrorAuth("");
+        } catch (e) {
+          setErrorAuth("No se pudo completar la conexión con Google (" + (e.message || e) + ").");
+        } finally {
+          setConectando(false);
+        }
+      },
+    });
+  }, [usaBackend, scriptListo, clientId]);
+
+  // Modo sin backend: inicializa el cliente implícito de siempre.
+  useEffect(() => {
+    if (usaBackend || !scriptListo || !clientId || !window.google?.accounts?.oauth2) return;
     tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: GOOGLE_CALENDAR_SCOPE,
       callback: (resp) => {
         setConectando(false);
         if (resp.error) {
-          // Un intento silencioso puede fallar si la sesión de Google expiró;
-          // en ese caso mostramos el botón de conexión sin un error alarmante.
           if (solicitudManualRef.current) setErrorAuth("No se pudo conectar con Google (" + resp.error + ").");
           solicitudManualRef.current = false;
           return;
         }
-        setAccessToken(resp.access_token);
+        guardarTokenLocal(resp.access_token, resp.expires_in);
         setErrorAuth("");
         solicitudManualRef.current = false;
       },
     });
-  }, [scriptListo, clientId]);
+  }, [usaBackend, scriptListo, clientId]);
 
+  // Intento silencioso inicial: solo aplica al modo sin backend (el modo
+  // con backend ya resuelve esto llamando a "refresh" al montar, arriba).
   useEffect(() => {
+    if (usaBackend) return;
     if (!tokenClientRef.current || intentoSilenciosoRef.current) return;
     intentoSilenciosoRef.current = true;
-    // No abre selector de cuenta ni pantalla de permisos. Si Google todavía
-    // reconoce al usuario y ya otorgó acceso, devuelve un token automáticamente.
     tokenClientRef.current.requestAccessToken({ prompt: "none" });
-  }, [scriptListo, clientId]);
+  }, [usaBackend, scriptListo, clientId]);
+
+  // Renovación automática en segundo plano, 5 minutos antes de que venza el
+  // token, para no depender de que el usuario recargue la página.
+  useEffect(() => {
+    if (!accessToken || !tokenExpiraEn) return;
+    const margen = 5 * 60 * 1000;
+    const demora = Math.max(tokenExpiraEn - Date.now() - margen, 5000);
+    const timer = setTimeout(async () => {
+      if (usaBackend) {
+        try {
+          const datos = await invocarGoogleCalendarAuth("refresh");
+          if (datos?.accessToken) {
+            setAccessTokenState(datos.accessToken);
+            setTokenExpiraEn(Date.now() + (Number(datos.expiresIn) || 3600) * 1000);
+          }
+        } catch (e) { /* se reintenta en la próxima carga o renovación */ }
+      } else {
+        tokenClientRef.current?.requestAccessToken({ prompt: "none" });
+      }
+    }, demora);
+    return () => clearTimeout(timer);
+  }, [accessToken, tokenExpiraEn, usaBackend]);
 
   const conectar = () => {
-    if (!tokenClientRef.current) {
-      setErrorAuth("Todavía se está preparando la conexión con Google. Esperá un segundo y probá de nuevo.");
-      return;
-    }
-    setConectando(true);
     setErrorAuth("");
-    solicitudManualRef.current = true;
-    tokenClientRef.current.requestAccessToken({ prompt: "" });
+    if (usaBackend) {
+      if (!codeClientRef.current) {
+        setErrorAuth("Todavía se está preparando la conexión con Google. Esperá un segundo y probá de nuevo.");
+        return;
+      }
+      setConectando(true);
+      codeClientRef.current.requestCode();
+    } else {
+      if (!tokenClientRef.current) {
+        setErrorAuth("Todavía se está preparando la conexión con Google. Esperá un segundo y probá de nuevo.");
+        return;
+      }
+      setConectando(true);
+      solicitudManualRef.current = true;
+      tokenClientRef.current.requestAccessToken({ prompt: "" });
+    }
   };
 
-  const desconectar = () => {
-    if (accessToken && window.google?.accounts?.oauth2) {
+  const desconectar = async () => {
+    if (usaBackend) {
+      try { await invocarGoogleCalendarAuth("disconnect"); } catch (e) { /* se limpia igual del lado del cliente */ }
+    } else if (accessToken && window.google?.accounts?.oauth2) {
       window.google.accounts.oauth2.revoke(accessToken, () => {});
     }
-    setAccessToken(null);
+    setAccessTokenState(null);
+    setTokenExpiraEn(0);
+    if (!usaBackend) guardarValor(GOOGLE_TOKEN_KEY, { accessToken: null, expiraEn: 0 });
   };
 
-  return { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo };
+  return { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo, tokenListo, usaBackend };
 }
+
 
 // Algunas tablets con teclado/trackpad informan un viewport y un puntero de
 // escritorio. Reconocemos el dispositivo táctil para no aplicarles por error
@@ -3591,9 +3708,35 @@ function ConfigCalendarioModal({ valorInicial, onSave, onClose }) {
   );
 }
 
-function ConfigGoogleClientModal({ valorInicial, onSave, onClose }) {
+function ConfigGoogleClientModal({ valorInicial, usaBackend, onSave, onClose }) {
   const [valor, setValor] = useState(valorInicial);
+  const [clientSecret, setClientSecret] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
   const clientIdLimpio = valor.trim();
+  const clientSecretLimpio = clientSecret.trim();
+  const puedeGuardar = usaBackend ? clientIdLimpio && clientSecretLimpio : clientIdLimpio;
+
+  const guardar = async () => {
+    setError("");
+    if (!usaBackend) {
+      onSave(clientIdLimpio);
+      return;
+    }
+    setGuardando(true);
+    try {
+      const datos = await invocarGoogleCalendarAuth("save-credentials", {
+        clientId: clientIdLimpio,
+        clientSecret: clientSecretLimpio,
+      });
+      if (datos?.error) throw new Error(datos.error);
+      onSave(clientIdLimpio);
+    } catch (e) {
+      setError(e.message || "No se pudieron guardar las credenciales.");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   return (
     <Modal title="Editar eventos desde la app" onClose={onClose} wide>
@@ -3607,36 +3750,74 @@ function ConfigGoogleClientModal({ valorInicial, onSave, onClose }) {
             autoFocus
           />
         </label>
+        {usaBackend && (
+          <label className="campo campo-full">
+            <span>Client Secret (Google Cloud)</span>
+            <input
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder="GOCSPX-…"
+              type="password"
+            />
+          </label>
+        )}
       </div>
 
-      <div className="ayuda-calendario ayuda-calendario-aviso">
-        <p className="ayuda-calendario-titulo">⚠️ Esto solo funciona en tu página publicada</p>
-        <p>
-          El login de Google necesita que el origen exacto de tu sitio (por ejemplo
-          https://tu-proyecto.vercel.app) esté autorizado en Google Cloud. No va a funcionar acá
-          en la vista previa de Claude, ni si copiás la app a otro dominio sin agregarlo también.
-        </p>
-      </div>
+      {error && <p role="alert" style={{ margin: "-8px 0 0", color: "#B5432E", fontSize: 13 }}>{error}</p>}
+
+      {usaBackend ? (
+        <div className="ayuda-calendario ayuda-calendario-aviso">
+          <p className="ayuda-calendario-titulo">🔒 El Client Secret queda guardado del lado del servidor</p>
+          <p>
+            Se envía directo a una Edge Function de Supabase que lo guarda en una tabla protegida
+            (no accesible desde el navegador). Con esto, la conexión con Google Calendar no depende
+            de reconectar cada vez: se conecta una sola vez y queda.
+          </p>
+        </div>
+      ) : (
+        <div className="ayuda-calendario ayuda-calendario-aviso">
+          <p className="ayuda-calendario-titulo">⚠️ Esto solo funciona en tu página publicada</p>
+          <p>
+            El login de Google necesita que el origen exacto de tu sitio (por ejemplo
+            https://tu-proyecto.vercel.app) esté autorizado en Google Cloud. No va a funcionar acá
+            en la vista previa de Claude, ni si copiás la app a otro dominio sin agregarlo también.
+          </p>
+        </div>
+      )}
 
       <div className="ayuda-calendario">
-        <p className="ayuda-calendario-titulo">¿Cómo consigo el ID de cliente?</p>
+        <p className="ayuda-calendario-titulo">¿Cómo consigo el ID de cliente{usaBackend ? " y el Client Secret" : ""}?</p>
         <ol>
           <li>Entrá a <strong>console.cloud.google.com</strong> y creá un proyecto (o usá uno existente).</li>
           <li>En el buscador de arriba, buscá <strong>"Google Calendar API"</strong> y tocá <strong>Habilitar</strong>.</li>
-          <li>Andá a <strong>APIs y servicios → Pantalla de consentimiento de OAuth</strong>, elegí "Externo", completá el nombre de la app y tu email, y agregate a vos mismo como <strong>usuario de prueba</strong>.</li>
+          <li>
+            Andá a <strong>APIs y servicios → Pantalla de consentimiento de OAuth</strong>, elegí "Externo", completá el
+            nombre de la app y tu email, y agregate a vos mismo como <strong>usuario de prueba</strong>.
+            {usaBackend && (
+              <> Para que la conexión no se corte a los 7 días, en <strong>Público</strong> (Publishing status) tocá
+              <strong> Publicar la aplicación</strong>: al ser una app no verificada vas a ver una pantalla de aviso al
+              conectar, tocá "Ir a (nombre de tu app), no seguro" y seguí normalmente.</>
+            )}
+          </li>
           <li>Andá a <strong>APIs y servicios → Credenciales → Crear credenciales → ID de cliente de OAuth</strong>, tipo <strong>"Aplicación web"</strong>.</li>
           <li>
             En <strong>"Orígenes de JavaScript autorizados"</strong> agregá la URL exacta de tu sitio
             (ej: https://tu-proyecto.vercel.app). Si querés probarlo en tu compu, agregá también
             http://localhost:5173.
           </li>
-          <li>Copiá el <strong>ID de cliente</strong> (termina en .apps.googleusercontent.com) y pegalo acá.</li>
+          {usaBackend ? (
+            <li>Copiá el <strong>ID de cliente</strong> y el <strong>Client Secret</strong> (Google te los muestra juntos al crear la credencial, y siempre podés volver a verlos entrando a esa credencial desde Credenciales) y pegalos acá.</li>
+          ) : (
+            <li>Copiá el <strong>ID de cliente</strong> (termina en .apps.googleusercontent.com) y pegalo acá.</li>
+          )}
         </ol>
       </div>
 
       <div className="modal-acciones">
         <button className="btn-secundario" onClick={onClose}>Cancelar</button>
-        <button className="btn-primario" disabled={!clientIdLimpio} onClick={() => onSave(clientIdLimpio)}>Guardar</button>
+        <button className="btn-primario" disabled={!puedeGuardar || guardando} onClick={guardar}>
+          {guardando ? "Guardando…" : "Guardar"}
+        </button>
       </div>
     </Modal>
   );
@@ -3891,7 +4072,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
   const [menuConfigAbierto, setMenuConfigAbierto] = useState(false);
   const { clientId, setClientId } = googleCal;
   const [clientModalAbierto, setClientModalAbierto] = useState(false);
-  const { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo } = googleCal;
+  const { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo, tokenListo, usaBackend } = googleCal;
 
   const [cursor, setCursor] = useState(new Date());
   const [vista, setVista] = useState("mes"); // "mes" | "semana"
@@ -4167,7 +4348,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
         </div>
       </header>
 
-      {calendarId && (!clientId || enClaude || !accessToken || errorAuth) && (
+      {calendarId && (!clientId || enClaude || (tokenListo && !accessToken) || errorAuth) && (
         <div className="calendario-edicion-barra">
           {!clientId ? (
             <button className="btn-secundario btn-chico" onClick={() => setClientModalAbierto(true)}>
@@ -4177,7 +4358,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
             <span className="calendario-edicion-nota muted">
               El calendario conectado solo funciona en tu página publicada, no en esta vista previa.
             </span>
-          ) : !accessToken ? (
+          ) : tokenListo && !accessToken ? (
             <>
               <button className="btn-secundario btn-chico" onClick={conectar} disabled={conectando || !scriptListo}>
                 {conectando ? "Conectando…" : "Conectar con Google"}
@@ -4347,6 +4528,7 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
       {clientModalAbierto && (
         <ConfigGoogleClientModal
           valorInicial={clientId}
+          usaBackend={usaBackend}
           onSave={(v) => { setClientId(v); setClientModalAbierto(false); }}
           onClose={() => setClientModalAbierto(false)}
         />
@@ -4818,13 +5000,13 @@ function PlanificadorApp({ user, onSignOut }) {
   const { calendarId, setCalendarId, cargado: calCargado } = useCalendarioConfig();
   const { sesiones, agregarSesion, cargado: sesionesCargado } = useSesionesEstudio();
   const { clientId, setClientId } = useGoogleClientId();
-  const { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo } = useGoogleAuth(clientId);
+  const { accessToken, conectar, desconectar, conectando, errorAuth, scriptListo, tokenListo, usaBackend } = useGoogleAuth(clientId);
   // Bundle chico con todo lo necesario para leer/escribir en Google Calendar,
   // para pasarlo a cualquier parte de la app que necesite sincronizar algo
   // (materias con horario, exámenes, o la vista de Calendario en sí).
   const googleCal = {
     clientId, setClientId,
-    accessToken, conectar, desconectar, conectando, errorAuth, scriptListo,
+    accessToken, conectar, desconectar, conectando, errorAuth, scriptListo, tokenListo, usaBackend,
     calendarId: useMemo(() => normalizarCalendarId(calendarId), [calendarId]),
     calendarIdCrudo: calendarId, setCalendarId,
   };
