@@ -5016,8 +5016,9 @@ function PlanificadorApp({ user, onSignOut }) {
         .view-head { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
 
         .busqueda-overlay { position: fixed; z-index: 200; inset: 0; padding: 7vh 20px 20px; background: rgba(24, 27, 20, 0.28); display: flex; justify-content: center; align-items: flex-start; animation: overlayFadeIn .15s ease-out; }
-        .busqueda-global { width: min(720px, 100%); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.24); overflow: hidden; animation: modalPopIn .18s ease-out; }
-        .busqueda-global-input { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: var(--ink-soft); }
+        .busqueda-global { width: min(720px, 100%); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 34px rgba(0,0,0,.24); animation: modalPopIn .18s ease-out; }
+        .busqueda-global-input { display: flex; align-items: center; gap: 12px; padding: 12px 16px; color: var(--ink-soft); border-radius: 10px; }
+        .busqueda-global-input:not(:only-child) { border-radius: 10px 10px 0 0; }
         .busqueda-global-input input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 15px; }
         .busqueda-global kbd { border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; font: 10px 'IBM Plex Mono', monospace; color: var(--ink-soft); }
         .busqueda-selector { position: relative; display: flex; align-items: center; flex: 0 0 auto; border-left: 1px solid var(--line); padding-left: 12px; }
@@ -5028,7 +5029,7 @@ function PlanificadorApp({ user, onSignOut }) {
         .busqueda-categoria-pop { top: 36px; min-width: 190px; }
         .fila-menu-pop button.activo { background: var(--paper-2); font-weight: 600; }
         .busqueda-categoria-check { margin-left: auto; color: var(--ink-soft); flex-shrink: 0; }
-        .busqueda-resultados { max-height: min(480px, 62vh); overflow-y: auto; padding: 7px; border-top: 1px solid var(--line); }
+        .busqueda-resultados { max-height: min(480px, 62vh); overflow-y: auto; padding: 7px; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
         .busqueda-resultados > .muted { padding: 20px 12px; line-height: 1.5; }
         .busqueda-resultado { width: 100%; display: grid; grid-template-columns: 78px minmax(0,1fr) 18px; align-items: center; gap: 10px; text-align: left; background: transparent; border: 0; border-radius: 8px; padding: 10px; color: var(--ink); cursor: pointer; font-family: inherit; }
         .busqueda-resultado:hover { background: var(--paper-2); }
