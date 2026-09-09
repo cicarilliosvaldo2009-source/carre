@@ -416,6 +416,45 @@ function materiaDeEvento(ev, materias) {
   return abreviadas[0] || null;
 }
 
+// Detecta, por palabras clave en el título, si el evento describe un examen
+// (y de qué tipo). Se usa tanto para auto-completar el formulario de "Nuevo
+// evento" como para que estos eventos NO se agrupen como "clase" en el
+// calendario, aunque su título contenga el nombre de una materia (ej:
+// "Parcial Derecho I" es un examen de Derecho I, no una clase de Derecho I).
+const PALABRAS_TIPO_EXAMEN = [
+  { tipo: "Recuperatorio", patrones: [/\brecuperator/] }, // antes que "Parcial": "Recuperatorio del parcial" es un recuperatorio.
+  { tipo: "Parcial", patrones: [/\bparcial(es)?\b/] },
+  { tipo: "Final", patrones: [/\bfinal(es)?\b/] },
+  { tipo: "Trabajo práctico", patrones: [/\btp\b/, /trabajo\s*practico/, /\bentrega\b/] },
+];
+function detectarTipoExamenEnTitulo(titulo) {
+  const t = normalizarTexto(titulo || "");
+  for (const { tipo, patrones } of PALABRAS_TIPO_EXAMEN) {
+    if (patrones.some((p) => p.test(t))) return tipo;
+  }
+  return null;
+}
+
+// Combina las dos detecciones de arriba: si el título trae tanto el nombre
+// de una materia como una palabra de examen, devuelve ambos datos listos
+// para precargar el vínculo "evento -> examen de esa materia".
+function detectarExamenDesdeTitulo(titulo, materias) {
+  const tipo = detectarTipoExamenEnTitulo(titulo);
+  if (!tipo) return null;
+  const materia = materiaDeEvento({ summary: titulo }, materias);
+  if (!materia) return null;
+  return { materia, tipo };
+}
+
+// Igual que materiaDeEvento, pero solo para decidir si un evento se agrupa
+// como "clase": si el título tiene pinta de examen (Parcial, Final, TP,
+// Recuperatorio...) no cuenta como clase aunque mencione una materia — se
+// muestra como evento "importante" en su lugar.
+function claseDeEvento(ev, materias) {
+  if (detectarTipoExamenEnTitulo(ev.summary)) return null;
+  return materiaDeEvento(ev, materias);
+}
+
 function colorParaEvento(ev, materias) {
   const materia = materiaDeEvento(ev, materias);
   if (materia) return materia.color;
@@ -1968,6 +2007,13 @@ function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guarda
   };
   // No podés elegirte a vos misma como tu propia correlativa.
   const opcionesCorrelativas = (materias || []).filter((m) => m.id !== form.id);
+  const [busquedaCorrelativas, setBusquedaCorrelativas] = useState("");
+  const opcionesCorrelativasFiltradas = useMemo(() => {
+    const q = normalizarTexto(busquedaCorrelativas);
+    const ordenadas = [...opcionesCorrelativas].sort((a, b) => (a.anio - b.anio) || a.nombre.localeCompare(b.nombre));
+    if (!q) return ordenadas;
+    return ordenadas.filter((m) => normalizarTexto(m.nombre).includes(q));
+  }, [opcionesCorrelativas, busquedaCorrelativas]);
 
   const addHorario = () => set("horarios", [...form.horarios, { dia: "Lunes", inicio: "08:00", fin: "10:00" }]);
   const updHorario = (i, k, v) => {
@@ -2029,21 +2075,40 @@ function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guarda
           {opcionesCorrelativas.length === 0 ? (
             <p className="muted" style={{ margin: "6px 0 0" }}>Todavía no hay otras materias cargadas para elegir.</p>
           ) : (
-            <div className="selector-correlativas">
-              {[...opcionesCorrelativas]
-                .sort((a, b) => (a.anio - b.anio) || a.nombre.localeCompare(b.nombre))
-                .map((m) => {
-                  const marcada = (form.correlativas || []).includes(m.id);
-                  return (
-                    <label key={m.id} className={`selector-correlativas-item ${marcada ? "selector-correlativas-item-on" : ""}`}>
-                      <input type="checkbox" checked={marcada} onChange={() => toggleCorrelativa(m.id)} />
-                      <span className="selector-correlativas-dot" style={{ background: m.color }} />
-                      <span className="selector-correlativas-nombre">{m.nombre}</span>
-                      <span className="selector-correlativas-anio">{anioLabel(m.anio)}</span>
-                    </label>
-                  );
-                })}
-            </div>
+            <>
+              {opcionesCorrelativas.length > 5 && (
+                <div className="correlativas-buscador">
+                  <Search size={14} />
+                  <input
+                    value={busquedaCorrelativas}
+                    onChange={(e) => setBusquedaCorrelativas(e.target.value)}
+                    placeholder="Buscar materia…"
+                  />
+                  {busquedaCorrelativas && (
+                    <button type="button" className="correlativas-buscador-limpiar" onClick={() => setBusquedaCorrelativas("")} aria-label="Limpiar búsqueda">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="selector-correlativas">
+                {opcionesCorrelativasFiltradas.length === 0 ? (
+                  <p className="muted" style={{ margin: "6px 9px" }}>No encontramos materias con ese nombre.</p>
+                ) : (
+                  opcionesCorrelativasFiltradas.map((m) => {
+                    const marcada = (form.correlativas || []).includes(m.id);
+                    return (
+                      <label key={m.id} className={`selector-correlativas-item ${marcada ? "selector-correlativas-item-on" : ""}`}>
+                        <input type="checkbox" checked={marcada} onChange={() => toggleCorrelativa(m.id)} />
+                        <span className="selector-correlativas-dot" style={{ background: m.color }} />
+                        <span className="selector-correlativas-nombre">{m.nombre}</span>
+                        <span className="selector-correlativas-anio">{anioLabel(m.anio)}</span>
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </>
           )}
         </div>
         <div className="campo campo-full">
@@ -3298,15 +3363,70 @@ const MAPA_NODO_COLOR = {
   bloqueada: "#BF8C7C",
 };
 
+// Agrupa las materias por año (columna) y decide en qué fila va cada una
+// dentro de su columna. En vez de dejarlas en el orden en que se cargaron
+// (lo que hacía que las líneas de correlativas subieran y bajaran sin
+// ningún criterio), cada materia intenta ubicarse en la misma fila que su
+// correlativa —o el promedio de filas, si depende de varias—. Así, una
+// cadena de materias consecutivas (Derecho I → Derecho II → Derecho del
+// Trabajo...) tiende a quedar en línea recta en vez de zigzagueando.
+//
+// Es el método de "baricentro" que se usa para acomodar grafos por capas:
+// se hacen varias pasadas de izquierda a derecha (cada materia mira el
+// promedio de fila de sus correlativas, que están en columnas anteriores) y
+// de derecha a izquierda (cada materia mira el promedio de fila de las
+// materias que la requieren, en columnas posteriores), repitiendo un par de
+// veces para que la cadena completa se termine de acomodar, no solo el año
+// inmediato anterior.
+function ordenarMateriasParaMapa(materias) {
+  const porAnio = new Map();
+  materias.forEach((m) => {
+    const key = m.anio || 0;
+    if (!porAnio.has(key)) porAnio.set(key, []);
+    porAnio.get(key).push(m);
+  });
+  const anios = [...porAnio.keys()].sort((a, b) => a - b);
+
+  // Orden de partida: el de carga, como antes (sirve de desempate estable).
+  const filaPorId = {};
+  anios.forEach((anio) => {
+    porAnio.get(anio).forEach((m, i) => { filaPorId[m.id] = i; });
+  });
+
+  // Quién requiere a cada materia (el sentido inverso de "correlativas").
+  const requeridaPor = new Map();
+  materias.forEach((m) => {
+    (m.correlativas || []).forEach((reqId) => {
+      if (!requeridaPor.has(reqId)) requeridaPor.set(reqId, []);
+      requeridaPor.get(reqId).push(m.id);
+    });
+  });
+
+  const ordenarColumna = (anio, mirarCorrelativas) => {
+    const items = porAnio.get(anio);
+    const conPuntaje = items.map((m, i) => {
+      const vecinos = mirarCorrelativas ? (m.correlativas || []) : (requeridaPor.get(m.id) || []);
+      const filas = vecinos.map((id) => filaPorId[id]).filter((v) => v !== undefined);
+      const puntaje = filas.length > 0 ? filas.reduce((a, b) => a + b, 0) / filas.length : i;
+      return { m, puntaje, i };
+    });
+    conPuntaje.sort((a, b) => a.puntaje - b.puntaje || a.i - b.i);
+    conPuntaje.forEach((x, idx) => { filaPorId[x.m.id] = idx; });
+    porAnio.set(anio, conPuntaje.map((x) => x.m));
+  };
+
+  for (let pasada = 0; pasada < 3; pasada++) {
+    anios.forEach((anio) => ordenarColumna(anio, true));
+    [...anios].reverse().forEach((anio) => ordenarColumna(anio, false));
+  }
+
+  return anios.map((anio) => [anio, porAnio.get(anio)]);
+}
+
 function MapaMaterias({ materias, abrirMateria }) {
   const columnas = useMemo(() => {
-    const map = new Map();
-    materias.forEach((m) => {
-      const key = m.anio || 0;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(m);
-    });
-    return [...map.entries()].sort((a, b) => a[0] - b[0]);
+
+    return ordenarMateriasParaMapa(materias);
   }, [materias]);
 
   const posiciones = useMemo(() => {
@@ -3567,28 +3687,6 @@ function MateriasView({ materias, setMaterias, materiaAbiertaId, setMateriaAbier
             ))}
           </div>
 
-          {aniosPresentes.length > 1 && (
-            <div className="tabs-anio">
-              <button
-                className={`tab-anio ${vistaAnio === "Todos" ? "tab-anio-activo" : ""}`}
-                style={{ "--tc": "var(--paper-2)", "--tct": "var(--ink)" }}
-                onClick={() => setVistaAnio("Todos")}
-              >
-                Todos
-              </button>
-              {aniosPresentes.map((a) => (
-                <button
-                  key={a}
-                  className={`tab-anio ${vistaAnio === a ? "tab-anio-activo" : ""}`}
-                  style={{ "--tc": colorParaAnio(a), "--tct": a ? "#F6F3E7" : "var(--ink)" }}
-                  onClick={() => setVistaAnio(a)}
-                >
-                  {a === 0 ? "Sin año" : anioLabel(a)}
-                </button>
-              ))}
-            </div>
-          )}
-
           <div className="lista-materias-panel">
             {vistaAnio === "Todos"
               ? grupos.map(([anio, items]) => items.length > 0 && (
@@ -3844,6 +3942,27 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
   );
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // Detecta, a partir del título, si esto es un examen de alguna materia
+  // cargada (ej: "Parcial Derecho I" -> Parcial, Derecho I). Mientras el
+  // título coincida, el evento se vincula solo — no hace falta elegir la
+  // materia ni el tipo a mano, solo confirmar (o destildar) más abajo.
+  const deteccionExamen = useMemo(
+    () => (esNuevo ? detectarExamenDesdeTitulo(form.titulo, materias) : null),
+    [esNuevo, form.titulo, materias]
+  );
+  useEffect(() => {
+    if (!esNuevo) return;
+    if (deteccionExamen) {
+      setForm((f) =>
+        f.vincularExamen && f.examenMateriaId === deteccionExamen.materia.id && f.examenTipo === deteccionExamen.tipo
+          ? f
+          : { ...f, vincularExamen: true, examenMateriaId: deteccionExamen.materia.id, examenTipo: deteccionExamen.tipo }
+      );
+    } else {
+      setForm((f) => (f.vincularExamen ? { ...f, vincularExamen: false } : f));
+    }
+  }, [deteccionExamen, esNuevo]);
+
   const toggleRepetir = (checked) => {
     setForm((f) => ({
       ...f,
@@ -3868,7 +3987,7 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
       <div className="form-grid">
         <label className="campo campo-full">
           <span>Título</span>
-          <input value={form.titulo} onChange={(e) => set("titulo", e.target.value)} placeholder="Ej: Segundo parcial" autoFocus />
+          <input value={form.titulo} onChange={(e) => set("titulo", e.target.value)} placeholder="Ej: Parcial Derecho I" autoFocus />
         </label>
         <label className="campo">
           <span>Fecha</span>
@@ -3939,31 +4058,19 @@ function EventoGoogleFormModal({ eventoInicial, fechaSugerida, horaSugerida, onG
                 </p>
               </>
             )}
-            {materias && materias.length > 0 && (
+            {deteccionExamen && (
               <>
                 <label className="campo campo-full campo-checkbox">
                   <input type="checkbox" checked={!!form.vincularExamen} onChange={(e) => set("vincularExamen", e.target.checked)} />
-                  <span>Vincular como examen de una materia</span>
+                  <span>
+                    Vincular como <strong>{deteccionExamen.tipo}</strong> de <strong>{deteccionExamen.materia.nombre}</strong>
+                  </span>
                 </label>
                 {form.vincularExamen && (
-                  <>
-                    <label className="campo">
-                      <span>Materia</span>
-                      <select value={form.examenMateriaId} onChange={(e) => set("examenMateriaId", e.target.value)}>
-                        {materias.map((m) => (<option key={m.id} value={m.id}>{m.nombre}</option>))}
-                      </select>
-                    </label>
-                    <label className="campo">
-                      <span>Tipo</span>
-                      <select value={form.examenTipo} onChange={(e) => set("examenTipo", e.target.value)}>
-                        {TIPOS_EXAMEN.map((t) => (<option key={t.id} value={t.id}>{t.id}</option>))}
-                      </select>
-                    </label>
-                    <p className="muted campo-full" style={{ margin: "-6px 0 0", fontSize: 12 }}>
-                      Además de crear el evento acá, va a aparecer como examen de esa materia — en su pestaña
-                      Exámenes y en Próximos exámenes del Inicio.
-                    </p>
-                  </>
+                  <p className="muted campo-full" style={{ margin: "-6px 0 0", fontSize: 12 }}>
+                    Además de crear el evento acá, va a aparecer como examen de esa materia — en su pestaña
+                    Exámenes y en Próximos exámenes del Inicio.
+                  </p>
                 )}
               </>
             )}
@@ -4281,8 +4388,8 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
   const eventosDelDiaSel = (diaSel ? (eventosPorDia.get(diaSel) || []) : [])
     .slice()
     .sort((a, b) => {
-      const aImportante = !materiaDeEvento(a, materias);
-      const bImportante = !materiaDeEvento(b, materias);
+      const aImportante = !claseDeEvento(a, materias);
+      const bImportante = !claseDeEvento(b, materias);
       if (aImportante !== bImportante) return aImportante ? -1 : 1;
       return (a.start?.dateTime || a.start?.date || "").localeCompare(b.start?.dateTime || b.start?.date || "");
     });
@@ -4429,9 +4536,9 @@ function CalendarioView({ calendarId, setCalendarId, materias, googleCal, onVinc
                         <span className="calendario-celda-num">{d}</span>
                         {(() => {
                           const clases = evs
-                            .map((ev) => ({ ev, materia: materiaDeEvento(ev, materias) }))
+                            .map((ev) => ({ ev, materia: claseDeEvento(ev, materias) }))
                             .filter((x) => x.materia);
-                          const importantes = evs.filter((ev) => !materiaDeEvento(ev, materias));
+                          const importantes = evs.filter((ev) => !claseDeEvento(ev, materias));
                           const MAX_IMPORTANTES = 3;
                           const visibles = importantes.slice(0, MAX_IMPORTANTES);
                           const ocultos = importantes.length - visibles.length;
@@ -5370,6 +5477,10 @@ function PlanificadorApp({ user, onSignOut }) {
         .campo-checkbox input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; }
         .campo-checkbox span { font-weight: 500; color: var(--ink); }
         .selector-correlativas { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--line); border-radius: 8px; padding: 4px; }
+        .correlativas-buscador { display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 6px 0; color: var(--ink-soft); }
+        .correlativas-buscador input { flex: 1; border: 0; outline: 0; background: transparent; font: inherit; color: var(--ink); padding: 0; }
+        .correlativas-buscador-limpiar { border: 0; background: transparent; color: var(--ink-soft); cursor: pointer; display: flex; padding: 2px; flex-shrink: 0; }
+        .correlativas-buscador-limpiar:hover { color: var(--ink); }
         .selector-correlativas-item { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 6px; cursor: pointer; font-weight: 500; color: var(--ink); }
         .selector-correlativas-item:hover { background: var(--paper-2); }
         .selector-correlativas-item-on { background: color-mix(in srgb, var(--forest) 10%, transparent); }
