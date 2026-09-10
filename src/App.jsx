@@ -3613,6 +3613,28 @@ function MapaMaterias({ materias, abrirMateria }) {
   const anchoTotal = columnas.length === 0 ? MAPA_PAD * 2 : colX[colX.length - 1] + MAPA_NODO_W + MAPA_PAD;
   const altoTotal = MAPA_PAD * 2 + MAPA_HEADER_H + maxFilas * (MAPA_NODO_H + MAPA_ROW_GAP);
 
+  // Zoom del mapa: con muchos años cargados, el mapa entero no entra en
+  // pantalla. En vez de que la única opción sea hacer scroll horizontal
+  // largo, se puede alejar para ver todo de una y acercar para leer una
+  // zona puntual. "Ajustar" calcula el zoom justo para que el ancho
+  // completo entre en el contenedor visible, y se aplica solo una vez al
+  // abrir el mapa (después queda en manos del usuario).
+  const scrollRef = useRef(null);
+  const [zoom, setZoom] = useState(1);
+  const ajustadoRef = useRef(false);
+  const ajustar = () => {
+    const disponible = scrollRef.current?.clientWidth;
+    if (!disponible || !anchoTotal) return;
+    const factor = Math.min(1, Math.max(0.35, (disponible - 8) / anchoTotal));
+    setZoom(Math.round(factor * 100) / 100);
+  };
+  useEffect(() => {
+    if (ajustadoRef.current) return;
+    ajustadoRef.current = true;
+    ajustar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchoTotal]);
+
   // Agrupa las columnas contiguas que comparten año, para poder mostrar un
   // título de año que abarque sus dos semestres (en vez de repetir "1er
   // año" en cada una de las dos columnas).
@@ -3632,8 +3654,22 @@ function MapaMaterias({ materias, abrirMateria }) {
 
   return (
     <div className="mapa-wrap">
-      <div className="mapa-scroll">
-        <div className={`mapa-lienzo ${cadena ? "mapa-lienzo-con-foco" : ""}`} style={{ width: anchoTotal, height: altoTotal }}>
+      <div className="mapa-zoom-bar">
+        <button type="button" onClick={() => setZoom((z) => Math.max(0.35, Math.round((z - 0.1) * 100) / 100))} disabled={zoom <= 0.35} aria-label="Alejar">
+          <Minus size={14} />
+        </button>
+        <span className="mapa-zoom-valor">{Math.round(zoom * 100)}%</span>
+        <button type="button" onClick={() => setZoom((z) => Math.min(1.5, Math.round((z + 0.1) * 100) / 100))} disabled={zoom >= 1.5} aria-label="Acercar">
+          <Plus size={14} />
+        </button>
+        <button type="button" className="mapa-zoom-ajustar" onClick={ajustar}>Ajustar a pantalla</button>
+      </div>
+      <div className="mapa-scroll" ref={scrollRef}>
+        <div style={{ width: anchoTotal * zoom, height: altoTotal * zoom }}>
+          <div
+            className={`mapa-lienzo ${cadena ? "mapa-lienzo-con-foco" : ""}`}
+            style={{ width: anchoTotal, height: altoTotal, transform: `scale(${zoom})`, transformOrigin: "top left" }}
+          >
           {gruposAnio.map((g) => (
             <div
               key={`anio-${g.colIdxInicio}`}
@@ -3697,6 +3733,7 @@ function MapaMaterias({ materias, abrirMateria }) {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
     </div>
@@ -5959,7 +5996,13 @@ function PlanificadorApp({ user, onSignOut }) {
         .bloque-agregar { display: flex; flex-direction: column; gap: 8px; }
 
         /* Mapa de materias */
-        .mapa-wrap { display: flex; flex-direction: column; gap: 14px; }
+        .mapa-wrap { display: flex; flex-direction: column; gap: 10px; }
+        .mapa-zoom-bar { display: flex; align-items: center; gap: 6px; align-self: flex-end; }
+        .mapa-zoom-bar button { display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); cursor: pointer; }
+        .mapa-zoom-bar button:hover:not(:disabled) { background: var(--paper-2); }
+        .mapa-zoom-bar button:disabled { opacity: 0.4; cursor: default; }
+        .mapa-zoom-valor { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--ink-soft); width: 38px; text-align: center; }
+        .mapa-zoom-ajustar { width: auto !important; padding: 0 10px; font-size: 11.5px; font-weight: 600; margin-left: 4px; }
         .mapa-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
         .mapa-lienzo { position: relative; }
         .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
