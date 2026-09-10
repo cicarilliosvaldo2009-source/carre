@@ -68,6 +68,10 @@ const COLORES = [
 ];
 
 const ESTADOS = ["Pendiente", "Cursando", "Regular", "Aprobada"];
+const SEMESTRES = [
+  { id: 1, label: "1er semestre" },
+  { id: 2, label: "2do semestre" },
+];
 const ESTADO_COLOR = {
   Pendiente: "#7A7768",
   Cursando: "#2C5C8A",
@@ -1992,7 +1996,7 @@ function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guarda
   const [form, setForm] = useState(
     materia || {
       nombre: "", profesor: "", aula: "", color: COLORES[0].hex, estado: "Pendiente",
-      anio: 1, correlativas: [], horarios: [], notas: [], recursos: [], resumenes: [],
+      anio: 1, semestre: 1, correlativas: [], horarios: [], notas: [], recursos: [], resumenes: [],
       fechaAprobada: null, promocionada: false, asistencia: { faltas: 0, inicioCursada: "", finCursada: "" }, examenes: [], tareas: [],
     }
   );
@@ -2010,7 +2014,7 @@ function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guarda
   const [busquedaCorrelativas, setBusquedaCorrelativas] = useState("");
   const opcionesCorrelativasFiltradas = useMemo(() => {
     const q = normalizarTexto(busquedaCorrelativas);
-    const ordenadas = [...opcionesCorrelativas].sort((a, b) => (a.anio - b.anio) || a.nombre.localeCompare(b.nombre));
+    const ordenadas = [...opcionesCorrelativas].sort((a, b) => (a.anio - b.anio) || ((a.semestre || 1) - (b.semestre || 1)) || a.nombre.localeCompare(b.nombre));
     if (!q) return ordenadas;
     return ordenadas.filter((m) => normalizarTexto(m.nombre).includes(q));
   }, [opcionesCorrelativas, busquedaCorrelativas]);
@@ -2048,6 +2052,14 @@ function MateriaFormModal({ materia, materias, onSave, onClose, onDelete, guarda
           <select value={form.anio} onChange={(e) => set("anio", Number(e.target.value))}>
             {[1, 2, 3, 4, 5, 6].map((n) => (
               <option key={n} value={n}>{anioLabel(n)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="campo">
+          <span>Semestre</span>
+          <select value={form.semestre || 1} onChange={(e) => set("semestre", Number(e.target.value))}>
+            {SEMESTRES.map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
             ))}
           </select>
         </label>
@@ -2542,7 +2554,7 @@ function MateriaDetalle({ materia, materias, onUpdate, onClose, onEdit, googleCa
           <p className="detalle-estado-label" style={{ "--sc": ESTADO_COLOR[materia.estado] }}>{materia.estado}</p>
           <h2>{materia.nombre}</h2>
           <p className="muted">
-            {materia.profesor || "Sin docente"} {materia.aula ? `· ${materia.aula}` : ""} · {anioLabel(materia.anio)}
+            {materia.profesor || "Sin docente"} {materia.aula ? `· ${materia.aula}` : ""} · {anioLabel(materia.anio)} · {SEMESTRES.find((s) => s.id === (materia.semestre || 1))?.label}
             {promedio !== null && ` · Promedio ${promedio.toFixed(2)}`}
           </p>
           {materia.estado === "Aprobada" && materia.fechaAprobada && (
@@ -3346,7 +3358,7 @@ const MAPA_NODO_H = 56;
 const MAPA_COL_GAP = 86;
 const MAPA_ROW_GAP = 18;
 const MAPA_PAD = 24;
-const MAPA_HEADER_H = 34;
+const MAPA_HEADER_H = 44;
 
 // Clasifica cada materia en el mapa según su situación real de correlativas,
 // que es lo que importa acá (no el detalle de si está Cursando o Regular):
@@ -3399,18 +3411,30 @@ function serieDeNombre(nombre) {
 // veces para que la cadena completa se termine de acomodar, no solo el año
 // inmediato anterior.
 function ordenarMateriasParaMapa(materias) {
-  const porAnio = new Map();
+  // Cada columna ahora es un año + semestre (1er/2do), no el año entero: así
+  // "Matemática I" (1er semestre) y "Matemática II" (2do semestre) del mismo
+  // año quedan en columnas separadas, una al lado de la otra, en vez de
+  // competir por la misma fila dentro de una sola columna larga.
+  const porColumna = new Map(); // "anio:semestre" -> materias[]
   materias.forEach((m) => {
-    const key = m.anio || 0;
-    if (!porAnio.has(key)) porAnio.set(key, []);
-    porAnio.get(key).push(m);
+    const anio = m.anio || 0;
+    const semestre = m.semestre === 2 ? 2 : 1;
+    const key = `${anio}:${semestre}`;
+    if (!porColumna.has(key)) porColumna.set(key, []);
+    porColumna.get(key).push(m);
   });
-  const anios = [...porAnio.keys()].sort((a, b) => a - b);
+  const columnas = [...porColumna.keys()]
+    .map((key) => {
+      const [anio, semestre] = key.split(":").map(Number);
+      return { key, anio, semestre };
+    })
+    .sort((a, b) => a.anio - b.anio || a.semestre - b.semestre);
+  const keys = columnas.map((c) => c.key);
 
   // Orden de partida: el de carga, como antes (sirve de desempate estable).
   const filaPorId = {};
-  anios.forEach((anio) => {
-    porAnio.get(anio).forEach((m, i) => { filaPorId[m.id] = i; });
+  keys.forEach((key) => {
+    porColumna.get(key).forEach((m, i) => { filaPorId[m.id] = i; });
   });
 
   // Quién requiere a cada materia (el sentido inverso de "correlativas").
@@ -3422,8 +3446,8 @@ function ordenarMateriasParaMapa(materias) {
     });
   });
 
-  const ordenarColumna = (anio, mirarCorrelativas) => {
-    const items = porAnio.get(anio);
+  const ordenarColumna = (key, mirarCorrelativas) => {
+    const items = porColumna.get(key);
     const conPuntaje = items.map((m, i) => {
       const vecinos = mirarCorrelativas ? (m.correlativas || []) : (requeridaPor.get(m.id) || []);
       const filas = vecinos.map((id) => filaPorId[id]).filter((v) => v !== undefined);
@@ -3437,15 +3461,15 @@ function ordenarMateriasParaMapa(materias) {
       return a.puntaje - b.puntaje || a.i - b.i;
     });
     conPuntaje.forEach((x, idx) => { filaPorId[x.m.id] = idx; });
-    porAnio.set(anio, conPuntaje.map((x) => x.m));
+    porColumna.set(key, conPuntaje.map((x) => x.m));
   };
 
   for (let pasada = 0; pasada < 3; pasada++) {
-    anios.forEach((anio) => ordenarColumna(anio, true));
-    [...anios].reverse().forEach((anio) => ordenarColumna(anio, false));
+    keys.forEach((key) => ordenarColumna(key, true));
+    [...keys].reverse().forEach((key) => ordenarColumna(key, false));
   }
 
-  return anios.map((anio) => [anio, porAnio.get(anio)]);
+  return columnas.map(({ anio, semestre, key }) => ({ anio, semestre, items: porColumna.get(key) }));
 }
 
 // Umbral aproximado (en caracteres) a partir del cual un nombre ya no entra
@@ -3466,7 +3490,7 @@ function MapaMaterias({ materias, abrirMateria }) {
 
   const posiciones = useMemo(() => {
     const map = {};
-    columnas.forEach(([, items], colIdx) => {
+    columnas.forEach(({ items }, colIdx) => {
       items.forEach((m, rowIdx) => {
         map[m.id] = {
           x: MAPA_PAD + colIdx * (MAPA_NODO_W + MAPA_COL_GAP),
@@ -3570,9 +3594,22 @@ function MapaMaterias({ materias, abrirMateria }) {
     return { nodos, aristas };
   }, [hoverId, materias, requeridaPor]);
 
-  const maxFilas = Math.max(1, ...columnas.map(([, items]) => items.length));
+  const maxFilas = Math.max(1, ...columnas.map((c) => c.items.length));
   const anchoTotal = MAPA_PAD * 2 + columnas.length * MAPA_NODO_W + Math.max(0, columnas.length - 1) * MAPA_COL_GAP;
   const altoTotal = MAPA_PAD * 2 + MAPA_HEADER_H + maxFilas * (MAPA_NODO_H + MAPA_ROW_GAP);
+
+  // Agrupa las columnas contiguas que comparten año, para poder mostrar un
+  // título de año que abarque sus dos semestres (en vez de repetir "1er
+  // año" en cada una de las dos columnas).
+  const gruposAnio = useMemo(() => {
+    const out = [];
+    columnas.forEach((c, colIdx) => {
+      const anterior = out[out.length - 1];
+      if (anterior && anterior.anio === c.anio) anterior.cantidad += 1;
+      else out.push({ anio: c.anio, colIdxInicio: colIdx, cantidad: 1 });
+    });
+    return out;
+  }, [columnas]);
 
   if (materias.length === 0) {
     return <p className="muted" style={{ padding: 20 }}>Todavía no cargaste materias.</p>;
@@ -3582,13 +3619,25 @@ function MapaMaterias({ materias, abrirMateria }) {
     <div className="mapa-wrap">
       <div className="mapa-scroll">
         <div className={`mapa-lienzo ${cadena ? "mapa-lienzo-con-foco" : ""}`} style={{ width: anchoTotal, height: altoTotal }}>
-          {columnas.map(([anio], colIdx) => (
+          {gruposAnio.map((g) => (
             <div
-              key={anio}
-              className="mapa-col-titulo"
+              key={`anio-${g.colIdxInicio}`}
+              className="mapa-col-titulo-anio"
+              style={{
+                left: MAPA_PAD + g.colIdxInicio * (MAPA_NODO_W + MAPA_COL_GAP),
+                width: g.cantidad * MAPA_NODO_W + (g.cantidad - 1) * MAPA_COL_GAP,
+              }}
+            >
+              {g.anio === 0 ? "Sin año" : anioLabel(g.anio)}
+            </div>
+          ))}
+          {columnas.map((c, colIdx) => (
+            <div
+              key={`sem-${colIdx}`}
+              className="mapa-col-titulo-semestre"
               style={{ left: MAPA_PAD + colIdx * (MAPA_NODO_W + MAPA_COL_GAP), width: MAPA_NODO_W }}
             >
-              {anio === 0 ? "Sin año" : anioLabel(anio)}
+              {SEMESTRES.find((s) => s.id === c.semestre)?.label || "1er semestre"}
             </div>
           ))}
 
@@ -5898,8 +5947,10 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-wrap { display: flex; flex-direction: column; gap: 14px; }
         .mapa-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
         .mapa-lienzo { position: relative; }
-        .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 3; }
-        .mapa-col-titulo { position: absolute; top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
+        .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
+        .mapa-lienzo-con-foco .mapa-svg { z-index: 3; }
+        .mapa-col-titulo-anio { position: absolute; top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
+        .mapa-col-titulo-semestre { position: absolute; top: 23px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 600; text-align: center; }
         .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s, filter 0.2s; font-family: inherit; }
         .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 11%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
         .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
