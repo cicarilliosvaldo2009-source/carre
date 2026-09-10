@@ -3363,6 +3363,26 @@ const MAPA_NODO_COLOR = {
   bloqueada: "#BF8C7C",
 };
 
+// Detecta si el nombre de una materia termina en un número de serie (romano
+// o arábigo): "Matemática II" -> { base: "matemática", numero: 2 }. Sirve
+// para que materias de la misma serie (Matemática I/II, Inglés I..VI,
+// Derecho I/II/III...) queden siempre en orden ascendente en el mapa, sin
+// importar qué diga el algoritmo de correlativas — no tiene sentido que
+// "Matemática II" aparezca arriba de "Matemática I" aunque no haya una
+// correlativa cargada entre ellas.
+const ROMANO_A_NUM = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
+function serieDeNombre(nombre) {
+  const partes = (nombre || "").trim().split(/\s+/);
+  if (partes.length < 2) return null;
+  const ultima = partes[partes.length - 1];
+  let numero = null;
+  if (ROMANO_A_NUM[ultima.toUpperCase()] !== undefined) numero = ROMANO_A_NUM[ultima.toUpperCase()];
+  else if (/^\d+$/.test(ultima)) numero = parseInt(ultima, 10);
+  if (numero === null) return null;
+  const base = partes.slice(0, -1).join(" ").trim().toLowerCase();
+  return base ? { base, numero } : null;
+}
+
 // Agrupa las materias por año (columna) y decide en qué fila va cada una
 // dentro de su columna. En vez de dejarlas en el orden en que se cargaron
 // (lo que hacía que las líneas de correlativas subieran y bajaran sin
@@ -3408,9 +3428,14 @@ function ordenarMateriasParaMapa(materias) {
       const vecinos = mirarCorrelativas ? (m.correlativas || []) : (requeridaPor.get(m.id) || []);
       const filas = vecinos.map((id) => filaPorId[id]).filter((v) => v !== undefined);
       const puntaje = filas.length > 0 ? filas.reduce((a, b) => a + b, 0) / filas.length : i;
-      return { m, puntaje, i };
+      return { m, puntaje, i, serie: serieDeNombre(m.nombre) };
     });
-    conPuntaje.sort((a, b) => a.puntaje - b.puntaje || a.i - b.i);
+    conPuntaje.sort((a, b) => {
+      // Regla dura: dentro de la misma serie ("Matemática I" y "Matemática
+      // II"), manda el número, ignorando el puntaje de correlativas.
+      if (a.serie && b.serie && a.serie.base === b.serie.base) return a.serie.numero - b.serie.numero;
+      return a.puntaje - b.puntaje || a.i - b.i;
+    });
     conPuntaje.forEach((x, idx) => { filaPorId[x.m.id] = idx; });
     porAnio.set(anio, conPuntaje.map((x) => x.m));
   };
@@ -3421,6 +3446,16 @@ function ordenarMateriasParaMapa(materias) {
   }
 
   return anios.map((anio) => [anio, porAnio.get(anio)]);
+}
+
+// Umbral aproximado (en caracteres) a partir del cual un nombre ya no entra
+// en una sola línea dentro del ancho angosto de un nodo del mapa. Por
+// debajo del umbral se muestra el nombre completo; por encima, se reusa la
+// misma abreviación de la barra de clases (ej: "Formulación y Eval. de
+// Proyectos" -> "For. Eva."), en vez de dejar que el cuadro se desborde.
+const MAPA_NODO_NOMBRE_MAX = 24;
+function nombreParaNodoMapa(nombre) {
+  return nombre.length > MAPA_NODO_NOMBRE_MAX ? abreviarMateria(nombre) : nombre;
 }
 
 function MapaMaterias({ materias, abrirMateria }) {
@@ -3489,7 +3524,24 @@ function MapaMaterias({ materias, abrirMateria }) {
   // y para adelante (todo lo que esta materia habilita más adelante). El
   // resto del mapa se atenúa, para poder seguir esa cadena sin que compita
   // visualmente con el resto de líneas cruzadas.
+  //
+  // El resaltado no se activa instantáneamente: hay que quedarse quieto
+  // sobre una materia un rato (500ms) para que se dispare. Así, pasar el
+  // mouse de paso por encima de varios cuadros (para llegar a otra parte
+  // del mapa) no hace que todo el mapa esté destacando y desenfocando todo
+  // el tiempo.
   const [hoverId, setHoverId] = useState(null);
+  const hoverTimerRef = useRef(null);
+  const activarHover = (id) => {
+    clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setHoverId(id), 500);
+  };
+  const cancelarHover = (id) => {
+    clearTimeout(hoverTimerRef.current);
+    setHoverId((h) => (h === id ? null : h));
+  };
+  useEffect(() => () => clearTimeout(hoverTimerRef.current), []);
+
   const cadena = useMemo(() => {
     if (!hoverId) return null;
     const materiaPorId = new Map(materias.map((m) => [m.id, m]));
@@ -3517,8 +3569,6 @@ function MapaMaterias({ materias, abrirMateria }) {
 
     return { nodos, aristas };
   }, [hoverId, materias, requeridaPor]);
-
-  const salirDeNodo = (id) => setHoverId((h) => (h === id ? null : h));
 
   const maxFilas = Math.max(1, ...columnas.map(([, items]) => items.length));
   const anchoTotal = MAPA_PAD * 2 + columnas.length * MAPA_NODO_W + Math.max(0, columnas.length - 1) * MAPA_COL_GAP;
@@ -3570,15 +3620,15 @@ function MapaMaterias({ materias, abrirMateria }) {
                   "--sc": MAPA_NODO_COLOR[estadoNodo], "--mc": m.color,
                 }}
                 onClick={() => abrirMateria(m.id)}
-                onMouseEnter={() => setHoverId(m.id)}
-                onMouseLeave={() => salirDeNodo(m.id)}
-                onFocus={() => setHoverId(m.id)}
-                onBlur={() => salirDeNodo(m.id)}
+                onMouseEnter={() => activarHover(m.id)}
+                onMouseLeave={() => cancelarHover(m.id)}
+                onFocus={() => activarHover(m.id)}
+                onBlur={() => cancelarHover(m.id)}
                 title={m.nombre}
               >
                 <span className="mapa-nodo-dot" />
                 {estadoNodo === "bloqueada" && <Lock size={11} className="mapa-nodo-lock" />}
-                <span className="mapa-nodo-nombre">{m.nombre}</span>
+                <span className="mapa-nodo-nombre">{nombreParaNodoMapa(m.nombre)}</span>
                 <span className="mapa-nodo-estado">{m.estado}</span>
               </button>
             );
@@ -5848,23 +5898,22 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-wrap { display: flex; flex-direction: column; gap: 14px; }
         .mapa-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
         .mapa-lienzo { position: relative; }
-        .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 3; }
         .mapa-col-titulo { position: absolute; top: 24px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
-        .mapa-nodo { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s; font-family: inherit; }
+        .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s, filter 0.2s; font-family: inherit; }
         .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 11%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
         .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
         .mapa-nodo-bloqueada .mapa-nodo-estado, .mapa-nodo-bloqueada .mapa-nodo-lock { color: var(--brick); }
         .mapa-nodo:hover { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 5; }
-        .mapa-nodo-nombre { font-size: 12.5px; font-weight: 700; color: var(--ink); line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .mapa-nodo-nombre { font-size: 12.5px; font-weight: 700; color: var(--ink); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .mapa-nodo-estado { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--sc); font-weight: 700; }
         .mapa-nodo-dot { display: none; }
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
-        .mapa-nodo { opacity: 1; }
-        .mapa-nodo-atenuado { opacity: 0.28; }
-        .mapa-nodo-atenuado:hover { opacity: 0.55; }
+        .mapa-nodo-atenuado { opacity: 0.35; filter: blur(1.5px); }
+        .mapa-nodo-atenuado:hover { opacity: 0.7; filter: blur(0); }
         .mapa-nodo-activo { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 6; }
-        .mapa-linea { transition: opacity 0.15s; }
-        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.12; }
+        .mapa-linea { transition: opacity 0.2s, filter 0.2s; }
+        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.15; filter: blur(1px); }
         .mapa-lienzo-con-foco .mapa-linea-foco { opacity: 1; }
 
         /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
