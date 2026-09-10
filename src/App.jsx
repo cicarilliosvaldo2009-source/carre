@@ -3353,10 +3353,10 @@ function MateriaDetalle({ materia, materias, onUpdate, onClose, onEdit, googleCa
    MAPA DE CORRELATIVAS
    ========================================================================= */
 
-const MAPA_NODO_W = 190;
-const MAPA_NODO_H = 56;
-const MAPA_COL_GAP_SEMESTRE = 34; // entre el 1er y 2do semestre del mismo año
-const MAPA_COL_GAP_ANIO = 58; // entre el último semestre de un año y el primero del siguiente
+const MAPA_NODO_W = 168;
+const MAPA_NODO_H = 54;
+const MAPA_COL_GAP_SEMESTRE = 26; // entre el 1er y 2do semestre del mismo año
+const MAPA_COL_GAP_ANIO = 46; // entre el último semestre de un año y el primero del siguiente
 const MAPA_ROW_GAP = 18;
 const MAPA_PAD = 24;
 const MAPA_HEADER_H = 44;
@@ -3478,7 +3478,7 @@ function ordenarMateriasParaMapa(materias) {
 // debajo del umbral se muestra el nombre completo; por encima, se reusa la
 // misma abreviación de la barra de clases (ej: "Formulación y Eval. de
 // Proyectos" -> "For. Eva."), en vez de dejar que el cuadro se desborde.
-const MAPA_NODO_NOMBRE_MAX = 24;
+const MAPA_NODO_NOMBRE_MAX = 21;
 function nombreParaNodoMapa(nombre) {
   return nombre.length > MAPA_NODO_NOMBRE_MAX ? abreviarMateria(nombre) : nombre;
 }
@@ -3616,16 +3616,22 @@ function MapaMaterias({ materias, abrirMateria }) {
   // Zoom del mapa: con muchos años cargados, el mapa entero no entra en
   // pantalla. En vez de que la única opción sea hacer scroll horizontal
   // largo, se puede alejar para ver todo de una y acercar para leer una
-  // zona puntual. "Ajustar" calcula el zoom justo para que el ancho
-  // completo entre en el contenedor visible, y se aplica solo una vez al
-  // abrir el mapa (después queda en manos del usuario).
+  // zona puntual. "Ajustar" calcula el zoom para que el ancho completo entre
+  // en el contenedor visible, pero nunca por debajo de MAPA_ZOOM_LEGIBLE —
+  // más vale que sobre un poco de scroll horizontal a que el texto quede
+  // ilegible. Se aplica solo una vez al abrir el mapa (después queda en
+  // manos del usuario, incluyendo poder alejar más manualmente si quiere
+  // una vista panorámica aunque se lea chico).
+  const MAPA_ZOOM_LEGIBLE = 0.72;
+  const MAPA_ZOOM_MIN = 0.35;
+  const MAPA_ZOOM_MAX = 1.5;
   const scrollRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const ajustadoRef = useRef(false);
   const ajustar = () => {
     const disponible = scrollRef.current?.clientWidth;
     if (!disponible || !anchoTotal) return;
-    const factor = Math.min(1, Math.max(0.35, (disponible - 8) / anchoTotal));
+    const factor = Math.min(1, Math.max(MAPA_ZOOM_LEGIBLE, (disponible - 8) / anchoTotal));
     setZoom(Math.round(factor * 100) / 100);
   };
   useEffect(() => {
@@ -3655,11 +3661,11 @@ function MapaMaterias({ materias, abrirMateria }) {
   return (
     <div className="mapa-wrap">
       <div className="mapa-zoom-bar">
-        <button type="button" onClick={() => setZoom((z) => Math.max(0.35, Math.round((z - 0.1) * 100) / 100))} disabled={zoom <= 0.35} aria-label="Alejar">
+        <button type="button" onClick={() => setZoom((z) => Math.max(MAPA_ZOOM_MIN, Math.round((z - 0.1) * 100) / 100))} disabled={zoom <= MAPA_ZOOM_MIN} aria-label="Alejar">
           <Minus size={14} />
         </button>
         <span className="mapa-zoom-valor">{Math.round(zoom * 100)}%</span>
-        <button type="button" onClick={() => setZoom((z) => Math.min(1.5, Math.round((z + 0.1) * 100) / 100))} disabled={zoom >= 1.5} aria-label="Acercar">
+        <button type="button" onClick={() => setZoom((z) => Math.min(MAPA_ZOOM_MAX, Math.round((z + 0.1) * 100) / 100))} disabled={zoom >= MAPA_ZOOM_MAX} aria-label="Acercar">
           <Plus size={14} />
         </button>
         <button type="button" className="mapa-zoom-ajustar" onClick={ajustar}>Ajustar a pantalla</button>
