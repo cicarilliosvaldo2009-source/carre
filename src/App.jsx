@@ -3355,7 +3355,8 @@ function MateriaDetalle({ materia, materias, onUpdate, onClose, onEdit, googleCa
 
 const MAPA_NODO_W = 190;
 const MAPA_NODO_H = 56;
-const MAPA_COL_GAP = 86;
+const MAPA_COL_GAP_SEMESTRE = 34; // entre el 1er y 2do semestre del mismo año
+const MAPA_COL_GAP_ANIO = 58; // entre el último semestre de un año y el primero del siguiente
 const MAPA_ROW_GAP = 18;
 const MAPA_PAD = 24;
 const MAPA_HEADER_H = 44;
@@ -3488,12 +3489,26 @@ function MapaMaterias({ materias, abrirMateria }) {
     return ordenarMateriasParaMapa(materias);
   }, [materias]);
 
+  // Posición X de cada columna: el espacio entre el 1er y 2do semestre de un
+  // mismo año es más chico que el espacio entre el último semestre de un año
+  // y el primero del siguiente, para que el agrupamiento por año se note de
+  // un vistazo y el mapa no quede innecesariamente ancho.
+  const colX = useMemo(() => {
+    const xs = [];
+    let x = MAPA_PAD;
+    columnas.forEach((c, i) => {
+      if (i > 0) x += MAPA_NODO_W + (c.anio === columnas[i - 1].anio ? MAPA_COL_GAP_SEMESTRE : MAPA_COL_GAP_ANIO);
+      xs.push(x);
+    });
+    return xs;
+  }, [columnas]);
+
   const posiciones = useMemo(() => {
     const map = {};
     columnas.forEach(({ items }, colIdx) => {
       items.forEach((m, rowIdx) => {
         map[m.id] = {
-          x: MAPA_PAD + colIdx * (MAPA_NODO_W + MAPA_COL_GAP),
+          x: colX[colIdx],
           y: MAPA_PAD + MAPA_HEADER_H + rowIdx * (MAPA_NODO_H + MAPA_ROW_GAP),
         };
       });
@@ -3595,7 +3610,7 @@ function MapaMaterias({ materias, abrirMateria }) {
   }, [hoverId, materias, requeridaPor]);
 
   const maxFilas = Math.max(1, ...columnas.map((c) => c.items.length));
-  const anchoTotal = MAPA_PAD * 2 + columnas.length * MAPA_NODO_W + Math.max(0, columnas.length - 1) * MAPA_COL_GAP;
+  const anchoTotal = columnas.length === 0 ? MAPA_PAD * 2 : colX[colX.length - 1] + MAPA_NODO_W + MAPA_PAD;
   const altoTotal = MAPA_PAD * 2 + MAPA_HEADER_H + maxFilas * (MAPA_NODO_H + MAPA_ROW_GAP);
 
   // Agrupa las columnas contiguas que comparten año, para poder mostrar un
@@ -3624,8 +3639,8 @@ function MapaMaterias({ materias, abrirMateria }) {
               key={`anio-${g.colIdxInicio}`}
               className="mapa-col-titulo-anio"
               style={{
-                left: MAPA_PAD + g.colIdxInicio * (MAPA_NODO_W + MAPA_COL_GAP),
-                width: g.cantidad * MAPA_NODO_W + (g.cantidad - 1) * MAPA_COL_GAP,
+                left: colX[g.colIdxInicio],
+                width: colX[g.colIdxInicio + g.cantidad - 1] + MAPA_NODO_W - colX[g.colIdxInicio],
               }}
             >
               {g.anio === 0 ? "Sin año" : anioLabel(g.anio)}
@@ -3635,7 +3650,7 @@ function MapaMaterias({ materias, abrirMateria }) {
             <div
               key={`sem-${colIdx}`}
               className="mapa-col-titulo-semestre"
-              style={{ left: MAPA_PAD + colIdx * (MAPA_NODO_W + MAPA_COL_GAP), width: MAPA_NODO_W }}
+              style={{ left: colX[colIdx], width: MAPA_NODO_W }}
             >
               {SEMESTRES.find((s) => s.id === c.semestre)?.label || "1er semestre"}
             </div>
