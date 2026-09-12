@@ -6015,7 +6015,7 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-lienzo-con-foco .mapa-svg { z-index: 3; }
         .mapa-col-titulo-anio { position: absolute; top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
         .mapa-col-titulo-semestre { position: absolute; top: 23px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 600; text-align: center; }
-        .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s, opacity 0.2s, filter 0.2s; font-family: inherit; }
+        .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s; font-family: inherit; }
         .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 11%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
         .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
         .mapa-nodo-bloqueada .mapa-nodo-estado, .mapa-nodo-bloqueada .mapa-nodo-lock { color: var(--brick); }
@@ -6024,11 +6024,11 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-nodo-estado { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--sc); font-weight: 700; }
         .mapa-nodo-dot { display: none; }
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
-        .mapa-nodo-atenuado { opacity: 0.35; filter: blur(1.5px); }
-        .mapa-nodo-atenuado:hover { opacity: 0.7; filter: blur(0); }
+        .mapa-nodo-atenuado { opacity: 0.3; }
+        .mapa-nodo-atenuado:hover { opacity: 0.6; }
         .mapa-nodo-activo { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 6; }
-        .mapa-linea { transition: opacity 0.2s, filter 0.2s; }
-        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.15; filter: blur(1px); }
+        .mapa-linea { transition: opacity 0.15s; }
+        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.12; }
         .mapa-lienzo-con-foco .mapa-linea-foco { opacity: 1; }
 
         /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
