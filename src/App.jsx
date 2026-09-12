@@ -3658,6 +3658,50 @@ function MapaMaterias({ materias, abrirMateria }) {
     return <p className="muted" style={{ padding: 20 }}>Todavía no cargaste materias.</p>;
   }
 
+  // Dibuja un cuadro de materia. "interactivo=false" se usa para la copia
+  // nítida de la capa de foco: es puramente visual (pointer-events: none),
+  // los clics y el hover siempre los maneja la copia real de abajo.
+  const renderNodo = (m, interactivo) => {
+    const pos = posiciones[m.id];
+    if (!pos) return null;
+    const estadoNodo = estadoMapaNodo(m, materias);
+    return (
+      <button
+        key={m.id}
+        type="button"
+        tabIndex={interactivo ? 0 : -1}
+        className={`mapa-nodo ${estadoNodo === "bloqueada" ? "mapa-nodo-bloqueada" : ""} ${m.id === hoverId ? "mapa-nodo-activo" : ""}`}
+        style={{
+          left: pos.x, top: pos.y, width: MAPA_NODO_W, height: MAPA_NODO_H,
+          "--sc": MAPA_NODO_COLOR[estadoNodo], "--mc": m.color,
+          pointerEvents: interactivo ? "auto" : "none",
+        }}
+        onClick={interactivo ? () => abrirMateria(m.id) : undefined}
+        onMouseEnter={interactivo ? () => activarHover(m.id) : undefined}
+        onMouseLeave={interactivo ? () => cancelarHover(m.id) : undefined}
+        onFocus={interactivo ? () => activarHover(m.id) : undefined}
+        onBlur={interactivo ? () => cancelarHover(m.id) : undefined}
+        title={interactivo ? m.nombre : undefined}
+      >
+        <span className="mapa-nodo-dot" />
+        {estadoNodo === "bloqueada" && <Lock size={11} className="mapa-nodo-lock" />}
+        <span className="mapa-nodo-nombre">{nombreParaNodoMapa(m.nombre)}</span>
+        <span className="mapa-nodo-estado">{m.estado}</span>
+      </button>
+    );
+  };
+
+  const renderLinea = (l) => (
+    <path
+      key={l.id}
+      d={l.d}
+      fill="none"
+      stroke={l.cumplida ? "#6FB37E" : "#CBC3A6"}
+      strokeWidth={l.cumplida ? 2 : 1.5}
+      strokeDasharray={l.cumplida ? "0" : "4 3"}
+    />
+  );
+
   return (
     <div className="mapa-wrap">
       <div className="mapa-zoom-bar">
@@ -3673,7 +3717,7 @@ function MapaMaterias({ materias, abrirMateria }) {
       <div className="mapa-scroll" ref={scrollRef}>
         <div style={{ width: anchoTotal * zoom, height: altoTotal * zoom }}>
           <div
-            className={`mapa-lienzo ${cadena ? "mapa-lienzo-con-foco" : ""}`}
+            className="mapa-lienzo"
             style={{ width: anchoTotal, height: altoTotal, transform: `scale(${zoom})`, transformOrigin: "top left" }}
           >
           {gruposAnio.map((g) => (
@@ -3698,47 +3742,31 @@ function MapaMaterias({ materias, abrirMateria }) {
             </div>
           ))}
 
-          <svg className="mapa-svg" width={anchoTotal} height={altoTotal}>
-            {lineas.map((l) => (
-              <path
-                key={l.id}
-                d={l.d}
-                fill="none"
-                stroke={l.cumplida ? "#6FB37E" : "#CBC3A6"}
-                strokeWidth={l.cumplida ? 2 : 1.5}
-                strokeDasharray={l.cumplida ? "0" : "4 3"}
-                className={`mapa-linea ${cadena ? (cadena.aristas.has(l.id) ? "mapa-linea-foco" : "mapa-linea-atenuada") : ""}`}
-              />
-            ))}
-          </svg>
+          {/* Capa de fondo: el mapa completo, siempre presente y siempre
+              interactiva. Cuando hay una materia en foco, se desenfoca y
+              atenúa COMO UNA SOLA UNIDAD (un solo filtro CSS para todo el
+              contenedor), en vez de desenfocar cada cuadro y línea por
+              separado — eso es lo que hacía que se sintiera lento en
+              tablets: un blur por elemento es carísimo de renderizar. */}
+          <div className={`mapa-capa-base ${cadena ? "mapa-capa-base-atenuada" : ""}`}>
+            <svg className="mapa-svg" width={anchoTotal} height={altoTotal}>
+              {lineas.map(renderLinea)}
+            </svg>
+            {materias.map((m) => renderNodo(m, true))}
+          </div>
 
-          {materias.map((m) => {
-            const pos = posiciones[m.id];
-            if (!pos) return null;
-            const estadoNodo = estadoMapaNodo(m, materias);
-            const enFoco = cadena ? cadena.nodos.has(m.id) : true;
-            return (
-              <button
-                key={m.id}
-                className={`mapa-nodo ${estadoNodo === "bloqueada" ? "mapa-nodo-bloqueada" : ""} ${!enFoco ? "mapa-nodo-atenuado" : ""} ${m.id === hoverId ? "mapa-nodo-activo" : ""}`}
-                style={{
-                  left: pos.x, top: pos.y, width: MAPA_NODO_W, height: MAPA_NODO_H,
-                  "--sc": MAPA_NODO_COLOR[estadoNodo], "--mc": m.color,
-                }}
-                onClick={() => abrirMateria(m.id)}
-                onMouseEnter={() => activarHover(m.id)}
-                onMouseLeave={() => cancelarHover(m.id)}
-                onFocus={() => activarHover(m.id)}
-                onBlur={() => cancelarHover(m.id)}
-                title={m.nombre}
-              >
-                <span className="mapa-nodo-dot" />
-                {estadoNodo === "bloqueada" && <Lock size={11} className="mapa-nodo-lock" />}
-                <span className="mapa-nodo-nombre">{nombreParaNodoMapa(m.nombre)}</span>
-                <span className="mapa-nodo-estado">{m.estado}</span>
-              </button>
-            );
-          })}
+          {/* Capa de foco: una copia nítida, solo de la cadena resaltada,
+              dibujada encima de la capa de fondo (ya desenfocada). Es
+              puramente decorativa (pointer-events: none) — los clics y el
+              hover los sigue manejando el cuadro real de la capa de fondo. */}
+          {cadena && (
+            <div className="mapa-capa-foco" aria-hidden="true">
+              {materias.filter((m) => cadena.nodos.has(m.id)).map((m) => renderNodo(m, false))}
+              <svg className="mapa-svg mapa-svg-foco" width={anchoTotal} height={altoTotal}>
+                {lineas.filter((l) => cadena.aristas.has(l.id)).map(renderLinea)}
+              </svg>
+            </div>
+          )}
           </div>
         </div>
       </div>
@@ -6011,11 +6039,15 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-zoom-ajustar { width: auto !important; padding: 0 10px; font-size: 11.5px; font-weight: 600; margin-left: 4px; }
         .mapa-scroll { overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
         .mapa-lienzo { position: relative; }
+        .mapa-capa-base, .mapa-capa-foco { position: absolute; inset: 0; }
+        .mapa-capa-base { transition: filter 0.15s ease, opacity 0.15s ease; }
+        .mapa-capa-base-atenuada { filter: blur(2px); opacity: 0.55; }
+        .mapa-capa-foco { pointer-events: none; }
         .mapa-svg { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; }
-        .mapa-lienzo-con-foco .mapa-svg { z-index: 3; }
+        .mapa-svg-foco { z-index: 10; }
         .mapa-col-titulo-anio { position: absolute; top: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ochre); font-weight: 700; text-align: center; }
         .mapa-col-titulo-semestre { position: absolute; top: 23px; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-soft); font-weight: 600; text-align: center; }
-        .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s; font-family: inherit; }
+        .mapa-nodo { position: absolute; z-index: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; text-align: left; background: var(--input-bg); border: 1.5px solid var(--sc); border-left: 5px solid var(--mc); border-radius: 8px; padding: 7px 10px; cursor: pointer; box-shadow: 0 1px 3px rgba(35,39,31,0.08); transition: transform 0.15s, box-shadow 0.15s; font-family: inherit; }
         .mapa-nodo-bloqueada { background: color-mix(in srgb, var(--ink-soft) 11%, var(--card)); border-color: var(--brick); border-left-color: var(--brick); }
         .mapa-nodo-bloqueada .mapa-nodo-nombre { color: color-mix(in srgb, var(--ink) 78%, var(--ink-soft)); }
         .mapa-nodo-bloqueada .mapa-nodo-estado, .mapa-nodo-bloqueada .mapa-nodo-lock { color: var(--brick); }
@@ -6024,12 +6056,7 @@ function PlanificadorApp({ user, onSignOut }) {
         .mapa-nodo-estado { font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--sc); font-weight: 700; }
         .mapa-nodo-dot { display: none; }
         .mapa-nodo-lock { position: absolute; top: 7px; right: 8px; color: var(--sc); }
-        .mapa-nodo-atenuado { opacity: 0.3; }
-        .mapa-nodo-atenuado:hover { opacity: 0.6; }
         .mapa-nodo-activo { transform: translateY(-2px); box-shadow: 0 5px 12px rgba(35,39,31,0.14); z-index: 6; }
-        .mapa-linea { transition: opacity 0.15s; }
-        .mapa-lienzo-con-foco .mapa-linea-atenuada { opacity: 0.12; }
-        .mapa-lienzo-con-foco .mapa-linea-foco { opacity: 1; }
 
         /* Incluye tablets en horizontal y dispositivos táctiles con trackpad.
            En estos últimos, el cursor puede ser "fino" pero el scroll de un
